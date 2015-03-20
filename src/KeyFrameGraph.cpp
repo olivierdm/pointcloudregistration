@@ -29,7 +29,11 @@ void KeyFrameGraph::refreshPCL()
 }
 PointCloud::Ptr KeyFrameGraph::getPCL()
 {
-	return cloud;
+	PointCloud::Ptr retCloud(new PointCloud);
+	dataMutex.lock();
+	*retCloud = *cloud;
+	dataMutex.unlock();
+	return retCloud;
 }
 bool KeyFrameGraph::PCLUpdate()
 {

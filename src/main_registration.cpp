@@ -24,13 +24,14 @@ void rosThreadLoop( int argc, char** argv )
 	printf("Started ROS thread\n");
 
 	ros::init(argc, argv, "registrar");
-	ROS_INFO("registrar node started");
+	ROS_INFO("registrar node starting");
 
 	ros::NodeHandle nh;
 
 	ros::Subscriber liveFrames_sub = nh.subscribe(nh.resolveName("lsd_slam/liveframes"),1, frameCb);
 	ros::Subscriber keyFrames_sub = nh.subscribe(nh.resolveName("lsd_slam/keyframes"),20, frameCb);
 	ros::Subscriber graph_sub       = nh.subscribe(nh.resolveName("lsd_slam/graph"),10, graphCb);
+	ROS_INFO("subscribers initialized - going for a spin");
 
 	ros::spin();
 
@@ -49,9 +50,10 @@ int main( int argc, char** argv )
 	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("cloud"));
   	viewer->setBackgroundColor (0, 0, 0);
   	viewer->addCoordinateSystem (1.0);
-	registrar = new PCL_registration();	
-  	pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(registrar->getPCL());
-	viewer->addPointCloud(registrar->getPCL(),rgb,"cloud");
+	registrar = new PCL_registration();
+	PointCloud::Ptr tmp=registrar->getPCL();
+  	pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(tmp);
+	viewer->addPointCloud(tmp,rgb,"cloud");
 	viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1,"cloud");
 	viewer->initCameraParameters ();
 	

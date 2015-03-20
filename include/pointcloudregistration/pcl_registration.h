@@ -26,6 +26,7 @@ class PCL_registration
     	PointCloud::Ptr cloud;
 	boost::mutex meddleMutex;
 	KeyFrameGraph* graph;
+	int currentCamID;
 
 
 };

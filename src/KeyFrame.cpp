@@ -129,21 +129,6 @@ void KeyFrame::refreshPCL()
 
 
 		Mdepth+=depth;
-/*            idx=x+y*width;
-		Sophus::Vector3f lpt((x*fxi + cxi)*depth, (y*fyi + cyi)*depth, depth);
-		Sophus::Vector3f pt = camToWorld * lpt;
-            pcl::PointXYZRGB point(originalInput[x+y*width].color[0], originalInput[x+y*width].color[1],originalInput[x+y*width].color[2]);
-            point.x=pt[0];
-            point.y=pt[1];
-            point.z=pt[2];
-            cloud->push_back(point);
-		if(createLocal)
-		{
-			point.x=lpt[0];
-			point.y=lpt[1];
-			point.z=lpt[2];
-			cloudLocal->push_back(point);
-		}*/
            pcl::PointXYZRGB point(originalInput[x+y*width].color[0], originalInput[x+y*width].color[1],originalInput[x+y*width].color[2]);
             point.x=(x*fxi + cxi)*depth;
             point.y=(y*fyi + cyi)*depth;
