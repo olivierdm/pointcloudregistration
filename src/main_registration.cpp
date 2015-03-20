@@ -48,19 +48,28 @@ int main( int argc, char** argv )
 	// start ROS thread
 	rosThread = boost::thread(rosThreadLoop, argc, argv);
 	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("cloud"));
-  	viewer->setBackgroundColor (0, 0, 0);
-  	viewer->addCoordinateSystem (1.0);
+	int v1(0);
+	viewer->createViewPort(0.0, 0.0, 0.5, 1.0, v1);
+  	viewer->setBackgroundColor (0, 0, 0,v1);
+
 	registrar = new PCL_registration();
 	PointCloud::Ptr tmp=registrar->getPCL();
   	pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(tmp);
-	viewer->addPointCloud(tmp,rgb,"cloud");
+	viewer->addPointCloud(tmp,rgb,"cloud",v1);
+	int v2(0);
+	viewer->createViewPort(0.5, 0.0, 1.0, 1.0, v2);
+	viewer->setBackgroundColor (0.3, 0.3, 0.3, v2);
+  	pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgba(registrar->getDepth());
+	viewer->addPointCloud(registrar->getDepth(),rgba,"depth",v2);
 	viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1,"cloud");
+	viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1,"depth");
 	viewer->initCameraParameters ();
-	
+	viewer->addCoordinateSystem (1.0);
 while (!viewer->wasStopped ())
   {
 	if(registrar->PCLUpdate())
 		viewer->updatePointCloud(registrar->getPCL(),"cloud");
+	viewer->updatePointCloud(registrar->getDepth(),"depth");
     viewer->spinOnce (100);
     boost::this_thread::sleep (boost::posix_time::microseconds (100000));
   }

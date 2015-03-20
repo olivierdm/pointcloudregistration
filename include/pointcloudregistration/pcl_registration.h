@@ -17,16 +17,19 @@ class PCL_registration
         void addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr);
 	void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
 	PointCloud::Ptr getPCL();
+	PointCloud::Ptr getDepth();
 	bool PCLUpdate();
 	void getDepthImage(lsd_slam_viewer::keyframeMsgConstPtr);
     protected:
     private:
 	ros::NodeHandle nh;
 	ros::Publisher pub;
-    	PointCloud::Ptr cloud;
-	boost::mutex meddleMutex;
+    	PointCloud::Ptr cloud,depth;
+	boost::mutex meddleMutex, depthMutex;
 	KeyFrameGraph* graph;
 	int currentCamID;
+	void calcBox(lsd_slam_viewer::keyframeMsgConstPtr msg);
+	float minX, maxX,minY,maxY,minZ,maxZ;
 
 
 };
