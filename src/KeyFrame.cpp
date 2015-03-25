@@ -73,12 +73,17 @@ void KeyFrame::refreshPCL()
 {
 	cloudValid=false;
 	bool createLocal=false;
-	if(cloudLocal->empty())
-	{
-		createLocal=true;
-	}
-		
-	cloud->clear();
+		bool paramsStillGood = my_scaledTH == scaledDepthVarTH &&
+			my_absTH == absDepthVarTH &&
+			my_scale*1.2 > camToWorld.scale() &&
+			my_scale < camToWorld.scale()*1.2 &&
+			my_minNearSupport == minNearSupport &&
+			my_sparsifyFactor == sparsifyFactor;
+	if(paramsStillGood){
+	//ROS_INFO("params still good");
+		return;
+		}
+	cloudLocal->clear();
 	my_scaledTH =scaledDepthVarTH;
 	my_absTH = absDepthVarTH;
 	my_scale = camToWorld.scale();
@@ -137,12 +142,9 @@ void KeyFrame::refreshPCL()
 
 
         }
-	Eigen::Matrix4f transformation = camToWorld.matrix();
-	pcl::transformPointCloud(*cloudLocal, *cloud, transformation);
 
-
-	Mdepth/=cloud->width;
-       ROS_INFO_STREAM("error 1: "<< err1 << " error 2: "<< err2 << " error 3: " << err3 << " number of points: " << cloud->width << " Mean depth: "<< Mdepth);
+	Mdepth/=cloudLocal->width;
+       ROS_INFO_STREAM("error 1: "<< err1 << " error 2: "<< err2 << " error 3: " << err3 << " number of points: " << cloudLocal->width << " Mean depth: "<< Mdepth);
 cloudValid=true;
 }
 sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg(bool local=true)
@@ -167,9 +169,7 @@ sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg(bool local=true)
 }
 PointCloud::Ptr KeyFrame::getPCL()
 {
-	if(!cloudValid)
-	{
-		refreshPCL();
-	}
-return cloud;
+	refreshPCL();
+	pcl::transformPointCloud(*cloudLocal, *cloud, camToWorld.matrix());
+	return cloud;
 }

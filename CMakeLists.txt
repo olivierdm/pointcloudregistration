@@ -111,7 +111,7 @@ link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
 set(HEADER_DIR include/pointcloudregistration)
-set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADER_DIR}/pcl_registration.h ${HEADER_DIR}/settings.h)
+set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADER_DIR}/pcl_registration.h ${HEADER_DIR}/settings.h ${HEADER_DIR}/vision.h )
 
 ## Declare a cpp library
 # add_library(vision
@@ -119,7 +119,7 @@ set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADE
 # )
 
 ## Declare a cpp executable
- add_executable(registrar src/main_registration.cpp src/pcl_registration.cpp src/KeyFrame.cpp src/KeyFrameGraph.cpp src/settings.cpp ${HEADER_FILES})
+ add_executable(registrar src/main_registration.cpp src/pcl_registration.cpp src/KeyFrame.cpp src/KeyFrameGraph.cpp src/settings.cpp   src/vision.cpp ${HEADER_FILES})
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(vision_node vision_generate_messages_cpp)

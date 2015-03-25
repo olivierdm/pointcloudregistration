@@ -1,9 +1,14 @@
 #include "ros/ros.h"
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <image_transport/subscriber_filter.h>
 #include "boost/thread.hpp"
 #include "pointcloudregistration/pcl_registration.h"
 #include "pointcloudregistration/settings.h"
 #include <pcl/visualization/pcl_visualizer.h>
 PCL_registration* registrar=0;
+Vision* visor=0;
 void frameCb(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
 
@@ -17,7 +22,10 @@ void graphCb(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 	if(registrar != 0)
 		registrar->addGraphMsg(msg);
 }
-
+void imageCb(const sensor_msgs::ImageConstPtr& msg)
+{
+	visor->addImgMsg(msg);
+}
 
 void rosThreadLoop( int argc, char** argv )
 {
@@ -27,10 +35,20 @@ void rosThreadLoop( int argc, char** argv )
 	ROS_INFO("registrar node starting");
 
 	ros::NodeHandle nh;
-
-	ros::Subscriber liveFrames_sub = nh.subscribe(nh.resolveName("lsd_slam/liveframes"),1, frameCb);
+	image_transport::ImageTransport it(nh);
+	//ros::Subscriber liveFrames_sub = nh.subscribe(nh.resolveName("lsd_slam/liveframes"),1, frameCb);
 	ros::Subscriber keyFrames_sub = nh.subscribe(nh.resolveName("lsd_slam/keyframes"),20, frameCb);
 	ros::Subscriber graph_sub       = nh.subscribe(nh.resolveName("lsd_slam/graph"),10, graphCb);
+	//image_sub_ = it.subscribe(nh.resolveName("/ardrone/image_raw"), 1,imageCb);
+	image_transport::SubscriberFilter image_sub(it, nh.resolveName("/ardrone/image_raw"),1);
+	message_filters::Subscriber<lsd_slam_viewer::keyframeMsg> liveFrame_sub(nh,nh.resolveName("lsd_slam/liveframes"), 1);
+
+
+	typedef sync_policies::ApproximateTime<Image, lsd_slam_viewer::keyframeMsg> MySyncPolicy;
+  // ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
+	Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), image_sub, liveFrames_sub);
+	sync.registerCallback(boost::bind(&callback, _1, _2));
+
 	ROS_INFO("subscribers initialized - going for a spin");
 
 	ros::spin();
@@ -42,17 +60,20 @@ void rosThreadLoop( int argc, char** argv )
 	exit(1);
 }
 
+
 int main( int argc, char** argv )
 {
-	boost::thread rosThread;
+	boost::thread rosThread, detectionThread;
 	// start ROS thread
 	rosThread = boost::thread(rosThreadLoop, argc, argv);
+	detectionThread=boost::thread(detectionLoop);
 	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("cloud"));
 	int v1(0);
 	viewer->createViewPort(0.0, 0.0, 0.5, 1.0, v1);
   	viewer->setBackgroundColor (0, 0, 0,v1);
 
 	registrar = new PCL_registration();
+	visor = new Vision();
 	PointCloud::Ptr tmp=registrar->getPCL();
   	pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(tmp);
 	viewer->addPointCloud(tmp,rgb,"cloud",v1);
