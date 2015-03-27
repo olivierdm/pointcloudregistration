@@ -3,7 +3,6 @@
 #include <ros/ros.h>
 #include "pcl_ros/point_cloud.h"
 #include "pcl/point_types.h"
-#include <pcl/filters/median_filter.h>
 #include "sophus/sim3.hpp"
 #include "pointcloudregistration/KeyFrameGraph.h"
 #include "pointcloudregistration/KeyFrame.h"

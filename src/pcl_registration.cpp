@@ -4,10 +4,6 @@
 #include <Eigen/Geometry>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/common/transforms.h>
-#include <pcl/filters/passthrough.h>
-
-
-
 PCL_registration::PCL_registration(): cloud (new PointCloud), depth(new PointCloud)
 {
 	nh=ros::NodeHandle("~");
