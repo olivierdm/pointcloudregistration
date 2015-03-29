@@ -1,6 +1,7 @@
 #ifndef PCL_ANALYSER_H
 #define PCL_ANALYSER_H
 #include <ros/ros.h>
+#include <std_msgs/Header.h>
 #include "lsd_slam_viewer/keyframeMsg.h"
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
@@ -9,6 +10,7 @@
 #include "pcl/point_types.h"
 #include <pcl/filters/median_filter.h>
 #include "sophus/sim3.hpp"
+#include "opencv2/highgui.hpp"
 #include <boost/thread.hpp>
 
 typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
@@ -20,6 +22,7 @@ class PCL_analyser
         virtual ~PCL_analyser();
 	void process(lsd_slam_viewer::keyframeMsgConstPtr);
 	bool ready();
+	void setCloud(PointCloud::Ptr);
 
     protected:
     private:
@@ -29,7 +32,7 @@ class PCL_analyser
     	PointCloud::Ptr cloud,depth, boundingbox;
 	boost::condition_variable newData;
 	boost::thread worker;
-	boost::mutex frameMutex;
+	boost::mutex frameMutex,cloudMutex;
 	Sophus::Sim3f camToWorld;
 	void calcBox(lsd_slam_viewer::keyframeMsgConstPtr);
 	void calcCurvature();
@@ -42,6 +45,7 @@ class PCL_analyser
 	void setCamera(float,float,float,float);
 	void getDepthImage();
 	void threadLoop();
+	std_msgs::Header header;
 };
 
 #endif // PCL_ANALYSER_H

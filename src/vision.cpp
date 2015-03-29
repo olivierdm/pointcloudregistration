@@ -5,7 +5,8 @@ Vision::Vision():nh("~"),it(nh)
 {
 	image_lsd = it.advertise("lsd",1);
 	ls = cv::createLineSegmentDetector(cv::LSD_REFINE_STD);
-
+	wantExit=false;
+	data_ready=false;
 	//initiate lsd image
 	cv_lsd_ptr = boost::make_shared<cv_bridge::CvImage>();
 	cv_lsd_ptr->encoding="bgr8";
@@ -63,6 +64,7 @@ void Vision::process(const sensor_msgs::ImageConstPtr& msg)
 	try
 	{
 		cv_input_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+		data_ready=true;
 	}
 	catch (cv_bridge::Exception& e)
 	{
@@ -70,6 +72,7 @@ void Vision::process(const sensor_msgs::ImageConstPtr& msg)
 		return;
 	}
 	}
+	ROS_INFO("process image");
 	//notify thread
 	newData.notify_one();
 }

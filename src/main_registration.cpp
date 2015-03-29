@@ -1,6 +1,5 @@
 #include "ros/ros.h"
 #include <image_transport/image_transport.h>
-
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
@@ -28,14 +27,18 @@ void graphCb(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 }
 void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::keyframeMsg::ConstPtr &frameMsg)
 {
+
 	if(pcl_analyse==0 || visor==0)
 		return;
 	//check if both are ready
 	if(!(visor->ready()) || !(pcl_analyse->ready()))
 		return;
 	//pass the data and do processing
+	ROS_INFO("in callback");
+	if(registrar->PCLUpdate())
+		pcl_analyse->setCloud(registrar->getPCL());
 	visor->process(imgMsg);
-	//pcl_analyse->process(frameMsg);
+	pcl_analyse->process(frameMsg);
 }
 
 void rosThreadLoop( int argc, char** argv )
@@ -49,7 +52,7 @@ void rosThreadLoop( int argc, char** argv )
 	image_transport::ImageTransport it(nh);
 	ros::Subscriber keyFrames_sub = nh.subscribe(nh.resolveName("lsd_slam/keyframes"),20, frameCb);
 	ros::Subscriber graph_sub       = nh.subscribe(nh.resolveName("lsd_slam/graph"),10, graphCb);
-	image_transport::SubscriberFilter image_sub(it, nh.resolveName("/ardrone/image_raw"),1);
+	image_transport::SubscriberFilter image_sub(it, nh.resolveName("image"),1);
 	message_filters::Subscriber<lsd_slam_viewer::keyframeMsg> liveFrames_sub(nh,nh.resolveName("lsd_slam/liveframes"), 1);
 	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, lsd_slam_viewer::keyframeMsg> MySyncPolicy;
 	// ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
