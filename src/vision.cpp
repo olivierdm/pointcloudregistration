@@ -1,6 +1,5 @@
 #include "pointcloudregistration/vision.h"
 
-
 Vision::Vision():nh("~"),it(nh)
 {
 	image_lsd = it.advertise("lsd",1);

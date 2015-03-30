@@ -33,14 +33,14 @@ PCL_analyser::~PCL_analyser()
 void PCL_analyser::getDepthImage()
 {
 	boost::mutex::scoped_lock lock(framesMtx);
-	setProjection(camToWorld.inverse());
+
 	std::vector<KeyFrame*> keyframes = graph->getFrames();
-	cv::Mat depthImg(height,width,CV_32F,cv::Scalar(0));
+	ROS_INFO_STREAM("opencv image height: " << height << ", width: "<< width);
+
 	Eigen::Vector3f point2de(0.0f,0.0f,1.0f);//extended coordinates
 	Eigen::Vector3f point3dT(0.0f,0.0f,0.0f);//extended coordinates
 	Eigen::Vector4f point3de(0.0f,0.0f,0.0f,1.0f);
 	PointCloud::Ptr roi (new PointCloud);
-	PointCloud::Ptr depthWorld(new PointCloud);
 	PointCloud::Ptr surface_hull (new PointCloud);
     	pcl::ConvexHull<pcl::PointXYZRGB> hull;
 	hull.setDimension(3);
@@ -48,38 +48,30 @@ void PCL_analyser::getDepthImage()
 	bb_filter.setDim(3);
 	int x,y,num;
 	num=0;
+	std::vector<pcl::Vertices> polygons;
+	depthImg.setTo(0.0f);
 	for(std::size_t i=0;i<keyframes.size();i++)
 	{
-	ROS_INFO("transform bounds");
-	std::vector<pcl::Vertices> polygons;
-
-	//lock graph 
-
 	//get boundingbox in analysed keyframe
-	pcl::transformPointCloud(*boundingbox, *roi, camToWorld.matrix()*keyframes[i]->camToWorld.inverse().matrix());
-	ROS_INFO("construct hull");
-
+	setProjection(camToWorld.inverse(),keyframes[i]->camToWorld);
+	ROS_DEBUG("transform bounds");	
+	pcl::transformPointCloud(*boundingbox, *roi, soph);
+	ROS_DEBUG("construct hull");
 	hull.setInputCloud(roi);
-
-
-	
-
 	hull.reconstruct(*surface_hull, polygons);
-
 	ROS_INFO("initialize filter");
 
 	bb_filter.setHullIndices(polygons);
 	bb_filter.setHullCloud(roi);
-	
+	//get the cloud and lock it
 	bb_filter.setInputCloud(keyframes[i]->getPCL());
-	bb_filter.filter(*depthWorld);
-	//unlock graph
+	bb_filter.filter(*depth);
+	//unlock cloud
+	keyframes[i]->release();
 
 
-
-
-	ROS_INFO_STREAM("iterating through cloud "<<i);
-	for(PointCloud::iterator it = depthWorld->begin(); it != depthWorld->end(); it++){ 
+	ROS_INFO_STREAM("iterating " << i+1 << " the time, through cloud "<<keyframes[i]->id <<"points: "<< depth->size());
+	for(PointCloud::iterator it = depth->begin(); it != depth->end(); it++){ 
 		point3de(0)=it->x;
 		point3de(1)=it->y;
 		point3de(2)=it->z;
@@ -90,12 +82,18 @@ void PCL_analyser::getDepthImage()
 		y=static_cast<int> (point2de(1)/point2de(2)+0.5f);
 		if(x<0||x>width||y<0||y>height)
 			continue;
-		depthImg.at<float>(y,x)=static_cast<float> (point3dT(2)*1000.0f);
+		depthImg.at<float>(y,x)= point3dT(2)*1000.0f;
 		num++;		
     	}
+
+	depth->clear();
+	roi->clear();
+	polygons.clear();
+	surface_hull->clear();
 	}
+	ROS_INFO("converting message");
+	msg = cv_bridge::CvImage(header, "mono16", depthImg.clone()).toImageMsg();
 	ROS_INFO_STREAM("sending message, "<< num << " points");
-	sensor_msgs::ImagePtr msg = cv_bridge::CvImage(header, "mono16", depthImg).toImageMsg();
 	pub.publish(msg);
 }
 void PCL_analyser::process(lsd_slam_viewer::keyframeMsgConstPtr msg)
@@ -126,6 +124,7 @@ void PCL_analyser::threadLoop()
 		data_ready=false;
 		if(wantExit)
 			return;
+		ROS_INFO("starting detection loop");
 		getDepthImage();
 		calcCurvature();
 	}
@@ -147,8 +146,9 @@ void PCL_analyser::calcBox(lsd_slam_viewer::keyframeMsgConstPtr msg)
 	float minx,minX,maxx,maxX,miny,minY,maxy,maxY;
 	width=msg->width;
 	height=msg->height;
-	float widthf = (float) width;
-	float heightf = (float) height;
+	depthImg=cv::Mat(height,width,CV_32F,0.0f);
+	float widthf = static_cast<float> (width);
+	float heightf = static_cast<float> (height);
 	minX=(fxi+cxi)*maxZ;
 	maxX=(widthf*fxi + cxi)*maxZ;
 
@@ -191,11 +191,12 @@ void PCL_analyser::setCamera(float fx, float fy, float cx, float cy)
 	camera(1,2)=cy;
 	ROS_INFO_STREAM("camera:\n"<< camera);
 }
-void PCL_analyser::setProjection(Sophus::Sim3f worldToCam)
+void PCL_analyser::setProjection(Sophus::Sim3f worldToCam,Sophus::Sim3f kfToWorld)
 {
-	Eigen::Matrix4f soph =worldToCam.matrix();
+	soph = worldToCam.matrix()*kfToWorld.matrix();
 	rotTrans =soph.block<3,4>(0,0);
 	projection= camera*rotTrans;
+	soph = kfToWorld.inverse().matrix()*worldToCam.inverse().matrix();
 }
 bool PCL_analyser::ready()
 {
@@ -207,11 +208,3 @@ bool PCL_analyser::ready()
 		return false;
 	}
 }
-/*PointCloud::Ptr PCL_registration::getDepth()
-{
-	PointCloud::Ptr tmp(new PointCloud);
-	depthMutex.lock();
-	*tmp=*depth;
-	depthMutex.unlock();
-	return tmp;
-}*/

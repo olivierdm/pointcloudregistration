@@ -2,7 +2,7 @@
 #include "pointcloudregistration/settings.h"
 #include <pcl/common/transforms.h>
 
-KeyFrame::KeyFrame(): cloud (new PointCloud), cloudLocal(new PointCloud)
+KeyFrame::KeyFrame(): cloud (new PointCloud)
 {
 	originalInput = 0;
 	my_scaledTH = my_absTH =0;
@@ -17,7 +17,6 @@ KeyFrame::~KeyFrame()
 
 void KeyFrame::setFrom(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
-
 	// copy over campose.
 	memcpy(camToWorld.data(), msg->camToWorld.data(), 7*sizeof(float));
 
@@ -61,18 +60,12 @@ void KeyFrame::setFrom(lsd_slam_viewer::keyframeMsgConstPtr msg)
         originalInput = new InputPointDense[width*height];
         memcpy(originalInput, msg->pointcloud.data(), width*height*sizeof(InputPointDense));
     }
-    PointCloud::Ptr pcl_cloud (new PointCloud);
-    pcl_cloud->height=1;
-    pcl_cloud->width=0;
-
     ROS_INFO_STREAM("height:"<<height<<"width:"<<width<<"size:"<<msg->pointcloud.size());
    
 }
 
 void KeyFrame::refreshPCL()
 {
-	cloudValid=false;
-	bool createLocal=false;
 		bool paramsStillGood = my_scaledTH == scaledDepthVarTH &&
 			my_absTH == absDepthVarTH &&
 			my_scale*1.2 > camToWorld.scale() &&
@@ -83,7 +76,7 @@ void KeyFrame::refreshPCL()
 	//ROS_INFO("params still good");
 		return;
 		}
-	cloudLocal->clear();
+	cloud->clear();
 	my_scaledTH =scaledDepthVarTH;
 	my_absTH = absDepthVarTH;
 	my_scale = camToWorld.scale();
@@ -138,30 +131,20 @@ void KeyFrame::refreshPCL()
             point.x=(x*fxi + cxi)*depth;
             point.y=(y*fyi + cyi)*depth;
             point.z=depth;
-		cloudLocal->push_back(point);
-
-
+		cloud->push_back(point);
         }
 
-	Mdepth/=cloudLocal->width;
-       ROS_INFO_STREAM("error 1: "<< err1 << " error 2: "<< err2 << " error 3: " << err3 << " number of points: " << cloudLocal->width << " Mean depth: "<< Mdepth);
+	Mdepth/=cloud->width;
+       ROS_INFO_STREAM("cloud "<< id << ": error 1: "<< err1 << " error 2: "<< err2 << " error 3: " << err3 << " number of points: " << cloud->width << " Mean depth: "<< Mdepth);
 cloudValid=true;
 }
-sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg(bool local=true)
+sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg()
 {
-	if(!cloudValid)
-	{
-		refreshPCL();
-	}
+	boost::mutex::scoped_lock lock(cloudMutex);
 	sensor_msgs::PointCloud2::Ptr pclMsg(new sensor_msgs::PointCloud2) ;
-	if(local)
-	{
-		pcl::toROSMsg(*cloudLocal, *pclMsg);
-		pclMsg->header.frame_id = "ardrone_base_frontcam";
-	}else{
-		pcl::toROSMsg(*cloud, *pclMsg);
-		pclMsg->header.frame_id = "world";
-	}
+	refreshPCL();
+	pcl::toROSMsg(*cloud, *pclMsg);
+	pclMsg->header.frame_id = "ardrone_base_frontcam";
 	pclMsg->is_dense = true;
 	pclMsg->header.seq=id;
 	pclMsg->header.stamp=ros::Time(time);
@@ -169,7 +152,13 @@ sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg(bool local=true)
 }
 PointCloud::Ptr KeyFrame::getPCL()
 {
+	cloudMutex.lock();
 	refreshPCL();
-	pcl::transformPointCloud(*cloudLocal, *cloud, camToWorld.matrix());
+	ROS_INFO_STREAM("locking cloud "<< id << "size: " <<cloud->width);
 	return cloud;
+}
+void KeyFrame::release()
+{
+	ROS_INFO_STREAM("unlocking cloud "<< id );
+	cloudMutex.unlock();
 }

@@ -2,6 +2,9 @@
 #include "lsd_slam_viewer/keyframeMsg.h"
 #include "sophus/sim3.hpp"
 #include "pcl_conversions/pcl_conversions.h"
+#include "boost/thread.hpp"
+
+
 typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
 struct InputPointDense
 {
@@ -22,11 +25,11 @@ public:
 
 
 	void setFrom(lsd_slam_viewer::keyframeMsgConstPtr msg);
-	sensor_msgs::PointCloud2::Ptr getROSMsg(bool);
+	sensor_msgs::PointCloud2::Ptr getROSMsg();
 	PointCloud::Ptr getPCL();
 	int id;
 	double time;
-
+	void release();
 	int totalPoints, displayedPoints;
 
 	// camera pose
@@ -41,6 +44,7 @@ private:
 	int width, height;
 	void refreshPCL();
 	bool cloudValid;
+	boost::mutex cloudMutex;
 
 	float my_scaledTH, my_absTH, my_scale;
 	int my_minNearSupport;
@@ -48,7 +52,7 @@ private:
 
 
 	// pointcloud data & respective buffer
-	PointCloud::Ptr cloud, cloudLocal;
+	PointCloud::Ptr cloud;
 	InputPointDense* originalInput;
 };
 

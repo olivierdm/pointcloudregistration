@@ -23,6 +23,7 @@ void KeyFrameGraph::refreshPCL()
 	{
 		PointCloud::Ptr tmp=keyframes[i]->getPCL();
 		*cloud+=*tmp;
+		keyframes[i]->release();
 	}
 	cloudUpdate=true;
 }
@@ -55,7 +56,7 @@ sensor_msgs::PointCloud2::Ptr KeyFrameGraph::addMsg(lsd_slam_viewer::keyframeMsg
 
 	keyframesByID[msg->id]->setFrom(msg);
 	}
-	sensor_msgs::PointCloud2::Ptr ros_msg = keyframesByID[msg->id]->getROSMsg(true);
+	sensor_msgs::PointCloud2::Ptr ros_msg = keyframesByID[msg->id]->getROSMsg();
 	return ros_msg;
 }
 

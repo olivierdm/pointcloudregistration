@@ -42,13 +42,16 @@ class PCL_analyser
 	bool wantExit,data_ready;
 	Eigen::Matrix3f camera;
 	Eigen::Matrix<float,3,4> rotTrans,projection;
-	void setProjection(Sophus::Sim3f);
+	void setProjection(Sophus::Sim3f,Sophus::Sim3f);
 	void setCamera(float,float,float,float);
 	void getDepthImage();
 	void threadLoop();
 	std::vector<KeyFrame*> keyframes;
 	std_msgs::Header header;
 	KeyFrameGraph* graph;
+	Eigen::Matrix4f soph;
+	cv::Mat depthImg;
+	sensor_msgs::ImagePtr msg;
 };
 
 #endif // PCL_ANALYSER_H

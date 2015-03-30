@@ -15,8 +15,6 @@ class PCL_registration
         virtual ~PCL_registration();
         void addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr);
 	void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
-	PointCloud::Ptr getPCL();
-	PointCloud::Ptr getDepth();
 	bool PCLUpdate();
 	void getDepthImage(lsd_slam_viewer::keyframeMsgConstPtr);
 
