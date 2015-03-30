@@ -6,14 +6,16 @@
 #include <math.h>
 #include <iostream>
 
-PCL_analyser::PCL_analyser(): cloud (new PointCloud), depth(new PointCloud), boundingbox(new PointCloud),nh("~"),it(nh)
+PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud), boundingbox(new PointCloud),nh("~"),it(nh)
 {
 	pub = it.advertise("depth",1);
 	minZ=0.3f;
 	maxZ=3.0f;
 	wantExit=false;
 	data_ready=false;
+	camera.setIdentity();
 	//create thread
+	graph=keyGraph;
 	worker = boost::thread(boost::bind(&PCL_analyser::threadLoop,this));
 	//ctor
 }
@@ -30,40 +32,53 @@ PCL_analyser::~PCL_analyser()
 }
 void PCL_analyser::getDepthImage()
 {
-	PointCloud::Ptr roi (new PointCloud);
-	PointCloud::Ptr depthWorld(new PointCloud);
-	ROS_INFO("transform bounds");
-	pcl::transformPointCloud(*boundingbox, *roi, camToWorld.matrix());
-	ROS_INFO("construct hull");
-    	pcl::ConvexHull<pcl::PointXYZRGB> hull;
-	hull.setInputCloud(roi);
-	hull.setDimension(3);
-	std::vector<pcl::Vertices> polygons;
-
-	PointCloud::Ptr surface_hull (new PointCloud);
-	hull.reconstruct(*surface_hull, polygons);
-	pcl::CropHull<pcl::PointXYZRGB> bb_filter;
-	ROS_INFO("initialize filter");
-	bb_filter.setDim(3);
-	bb_filter.setHullIndices(polygons);
-	bb_filter.setHullCloud(roi);
-	{
-	boost::mutex::scoped_lock lock(cloudMutex);
-	bb_filter.setInputCloud(cloud);
-	bb_filter.filter(*depthWorld);
-	}
-	ROS_INFO("calculate projection");
+	boost::mutex::scoped_lock lock(framesMtx);
 	setProjection(camToWorld.inverse());
-
-	cv::Mat depthImg(height,width,CV_16UC1,cv::Scalar(0));
+	std::vector<KeyFrame*> keyframes = graph->getFrames();
+	cv::Mat depthImg(height,width,CV_32F,cv::Scalar(0));
 	Eigen::Vector3f point2de(0.0f,0.0f,1.0f);//extended coordinates
 	Eigen::Vector3f point3dT(0.0f,0.0f,0.0f);//extended coordinates
 	Eigen::Vector4f point3de(0.0f,0.0f,0.0f,1.0f);
+	PointCloud::Ptr roi (new PointCloud);
+	PointCloud::Ptr depthWorld(new PointCloud);
+	PointCloud::Ptr surface_hull (new PointCloud);
+    	pcl::ConvexHull<pcl::PointXYZRGB> hull;
+	hull.setDimension(3);
+	pcl::CropHull<pcl::PointXYZRGB> bb_filter;
+	bb_filter.setDim(3);
 	int x,y,num;
 	num=0;
-	float depth;
-	ROS_INFO_STREAM( "width: " << depthWorld->width << " height: " << depthWorld->height) ;
-	ROS_INFO("iterating through cloud");
+	for(std::size_t i=0;i<keyframes.size();i++)
+	{
+	ROS_INFO("transform bounds");
+	std::vector<pcl::Vertices> polygons;
+
+	//lock graph 
+
+	//get boundingbox in analysed keyframe
+	pcl::transformPointCloud(*boundingbox, *roi, camToWorld.matrix()*keyframes[i]->camToWorld.inverse().matrix());
+	ROS_INFO("construct hull");
+
+	hull.setInputCloud(roi);
+
+
+	
+
+	hull.reconstruct(*surface_hull, polygons);
+
+	ROS_INFO("initialize filter");
+
+	bb_filter.setHullIndices(polygons);
+	bb_filter.setHullCloud(roi);
+	
+	bb_filter.setInputCloud(keyframes[i]->getPCL());
+	bb_filter.filter(*depthWorld);
+	//unlock graph
+
+
+
+
+	ROS_INFO_STREAM("iterating through cloud "<<i);
 	for(PointCloud::iterator it = depthWorld->begin(); it != depthWorld->end(); it++){ 
 		point3de(0)=it->x;
 		point3de(1)=it->y;
@@ -71,13 +86,14 @@ void PCL_analyser::getDepthImage()
 		//calculation may be further optimized as only z is needed in camera perspective
 		point3dT=rotTrans*point3de;//calc point in camera perspective
 		point2de=projection*point3de; //calc projected coordinates
-		x=(int) round(point2de(0)/point2de(2));
-		y=(int) round(point2de(1)/point2de(2));
+		x=static_cast<int> (point2de(0)/point2de(2)+0.5f);
+		y=static_cast<int> (point2de(1)/point2de(2)+0.5f);
 		if(x<0||x>width||y<0||y>height)
 			continue;
-		depthImg.at<unsigned short>(y,x)=static_cast<unsigned short> (point3dT(2)*1000.0f);
+		depthImg.at<float>(y,x)=static_cast<float> (point3dT(2)*1000.0f);
 		num++;		
     	}
+	}
 	ROS_INFO_STREAM("sending message, "<< num << " points");
 	sensor_msgs::ImagePtr msg = cv_bridge::CvImage(header, "mono16", depthImg).toImageMsg();
 	pub.publish(msg);
@@ -118,12 +134,7 @@ void PCL_analyser::calcCurvature()
 {
 	ROS_INFO("dummy calc curvature");
 }
-void PCL_analyser::setCloud(PointCloud::Ptr regcloud)
-{
-//maybe more efficient ways to copy
-boost::mutex::scoped_lock lock(cloudMutex);
-	*cloud=*regcloud;
-}
+
 void PCL_analyser::calcBox(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
 	
@@ -175,14 +186,9 @@ void PCL_analyser::calcBox(lsd_slam_viewer::keyframeMsgConstPtr msg)
 void PCL_analyser::setCamera(float fx, float fy, float cx, float cy)
 {
 	camera(0,0)=fx;
-	camera(0,1)=0.0f;
 	camera(0,2)=cx;
-	camera(1,0)=0.0f;
 	camera(1,1)=fy;
 	camera(1,2)=cy;
-	camera(2,0)=0.0f;
-	camera(2,1)=0.0f;
-	camera(2,2)=1.0f;
 	ROS_INFO_STREAM("camera:\n"<< camera);
 }
 void PCL_analyser::setProjection(Sophus::Sim3f worldToCam)

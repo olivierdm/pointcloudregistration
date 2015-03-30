@@ -12,17 +12,18 @@
 #include "sophus/sim3.hpp"
 #include "opencv2/highgui.hpp"
 #include <boost/thread.hpp>
+#include "pointcloudregistration/pcl_registration.h"
 
 typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
 
 class PCL_analyser
 {
     public:
-        PCL_analyser();
+        PCL_analyser(KeyFrameGraph*);
         virtual ~PCL_analyser();
 	void process(lsd_slam_viewer::keyframeMsgConstPtr);
 	bool ready();
-	void setCloud(PointCloud::Ptr);
+
 
     protected:
     private:
@@ -32,7 +33,7 @@ class PCL_analyser
     	PointCloud::Ptr cloud,depth, boundingbox;
 	boost::condition_variable newData;
 	boost::thread worker;
-	boost::mutex frameMutex,cloudMutex;
+	boost::mutex frameMutex,cloudMutex,framesMtx;
 	Sophus::Sim3f camToWorld;
 	void calcBox(lsd_slam_viewer::keyframeMsgConstPtr);
 	void calcCurvature();
@@ -45,7 +46,9 @@ class PCL_analyser
 	void setCamera(float,float,float,float);
 	void getDepthImage();
 	void threadLoop();
+	std::vector<KeyFrame*> keyframes;
 	std_msgs::Header header;
+	KeyFrameGraph* graph;
 };
 
 #endif // PCL_ANALYSER_H

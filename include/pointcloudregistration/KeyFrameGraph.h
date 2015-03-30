@@ -46,13 +46,14 @@ public:
 	void refreshPCL();
 	sensor_msgs::PointCloud2::Ptr addMsg(lsd_slam_viewer::keyframeMsgConstPtr);
 	void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
+	std::vector<KeyFrame*> getFrames();
 
 private:
 	std::map<int, KeyFrame*> keyframesByID;
 	std::vector<KeyFrame*> keyframes;
 	std::vector<GraphConstraintPt> constraints;
 	PointCloud::Ptr cloud;
-	boost::mutex dataMutex;
+	boost::mutex cloudMutex,graphMutex;
 	bool cloudUpdate;
 
 };

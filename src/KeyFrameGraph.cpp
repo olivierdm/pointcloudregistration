@@ -11,39 +11,39 @@ KeyFrameGraph::KeyFrameGraph():cloud (new PointCloud)
 
 KeyFrameGraph::~KeyFrameGraph()
 {
-	for(unsigned int i=0;i<keyframes.size();i++)
+	for(std::size_t i=0;i<keyframes.size();i++)
 		delete keyframes[i];
 }
 
 void KeyFrameGraph::refreshPCL()
 {
-	dataMutex.lock();
+
 	cloud->clear();
 	for(std::size_t i=0;i<keyframes.size();i++)
 	{
 		PointCloud::Ptr tmp=keyframes[i]->getPCL();
 		*cloud+=*tmp;
 	}
-	dataMutex.unlock();
 	cloudUpdate=true;
 }
 PointCloud::Ptr KeyFrameGraph::getPCL()
 {
 	PointCloud::Ptr retCloud(new PointCloud);
-	dataMutex.lock();
+	boost::mutex::scoped_lock lock(cloudMutex);
 	*retCloud = *cloud;
-	dataMutex.unlock();
 	return retCloud;
 }
 bool KeyFrameGraph::PCLUpdate()
 {
+	boost::mutex::scoped_lock lock(cloudMutex);
 	bool tmp=cloudUpdate;
 	cloudUpdate=false;
 	return tmp;
 }
 sensor_msgs::PointCloud2::Ptr KeyFrameGraph::addMsg(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
-	dataMutex.lock();
+	{
+	boost::mutex::scoped_lock lock(graphMutex);
 	if(keyframesByID.count(msg->id) == 0)
 	{
 		KeyFrame* disp = new KeyFrame();
@@ -54,15 +54,14 @@ sensor_msgs::PointCloud2::Ptr KeyFrameGraph::addMsg(lsd_slam_viewer::keyframeMsg
 	}
 
 	keyframesByID[msg->id]->setFrom(msg);
+	}
 	sensor_msgs::PointCloud2::Ptr ros_msg = keyframesByID[msg->id]->getROSMsg(true);
-	dataMutex.unlock();
 	return ros_msg;
 }
 
 void KeyFrameGraph::addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 {
-	dataMutex.lock();
-
+	boost::mutex::scoped_lock lock(graphMutex);
 	constraints.resize(msg->numConstraints);
 	assert(msg->constraintsData.size() == sizeof(GraphConstraint)*msg->numConstraints);
 	GraphConstraint* constraintsIn = (GraphConstraint*)msg->constraintsData.data();
@@ -106,7 +105,11 @@ void KeyFrameGraph::addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 			memcpy(keyframesByID[graphPoses[i].id]->camToWorld.data(), graphPoses[i].camToWorld, 7*sizeof(float));
 	}
 
-	dataMutex.unlock();
 
 //	printf("graph update: %d constraints, %d poses\n", msg->numConstraints, msg->numFrames);
+}
+std::vector<KeyFrame*> KeyFrameGraph::getFrames()
+{
+	boost::mutex::scoped_lock lock(graphMutex);
+	return keyframes;
 }

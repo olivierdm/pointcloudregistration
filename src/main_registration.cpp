@@ -5,6 +5,7 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <image_transport/subscriber_filter.h>
 #include "boost/thread.hpp"
+#include <boost/lexical_cast.hpp>
 #include "pointcloudregistration/pcl_registration.h"
 #include "pointcloudregistration/pcl_analyser.h"
 #include "pointcloudregistration/vision.h"
@@ -12,18 +13,21 @@
 #include <pcl/visualization/pcl_visualizer.h>
 PCL_registration* registrar=0;
 PCL_analyser* pcl_analyse=0;
+KeyFrameGraph* graph=0;
 Vision* visor=0;
+bool update=false;
 void frameCb(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
 	if(msg->time > lastFrameTime) return;
-
 	if(registrar != 0)
 		registrar->addFrameMsg(msg);
+		update=true;
 }
 void graphCb(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 {
-	if(registrar != 0)
-		registrar->addGraphMsg(msg);
+	if(registrar == 0) return;
+	registrar->addGraphMsg(msg);
+	update=true;
 }
 void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::keyframeMsg::ConstPtr &frameMsg)
 {
@@ -35,8 +39,6 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 		return;
 	//pass the data and do processing
 	ROS_INFO("in callback");
-	if(registrar->PCLUpdate())
-		pcl_analyse->setCloud(registrar->getPCL());
 	visor->process(imgMsg);
 	pcl_analyse->process(frameMsg);
 }
@@ -80,12 +82,12 @@ int main( int argc, char** argv )
 	viewer->createViewPort(0.0, 0.0, 0.5, 1.0, v1);
   	viewer->setBackgroundColor (0, 0, 0,v1);
 
-	registrar = new PCL_registration();
+
 	visor = new Vision();
-	pcl_analyse = new PCL_analyser();
-	PointCloud::Ptr tmp=registrar->getPCL();
-  	pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(tmp);
-	viewer->addPointCloud(tmp,rgb,"cloud",v1);
+	graph = new KeyFrameGraph();
+	registrar = new PCL_registration(graph);
+	pcl_analyse = new PCL_analyser(graph);
+
 	int v2(0);
 	viewer->createViewPort(0.5, 0.0, 1.0, 1.0, v2);
 	viewer->setBackgroundColor (0.3, 0.3, 0.3, v2);
@@ -97,15 +99,39 @@ int main( int argc, char** argv )
 	viewer->addCoordinateSystem (1.0);
 while (!viewer->wasStopped ())
   {
-	if(registrar->PCLUpdate())
+	std::vector<KeyFrame*> keyframes=graph->getFrames();
+	Eigen::Affine3f trans;
+	if(update)
+	{ 
+		for(std::size_t i=0;i<keyframes.size();i++)
+		{
+			trans=keyframes[i]->camToWorld.matrix();
+			std::string id = boost::lexical_cast<std::string>(keyframes[i]->id);
+			if(!viewer->updatePointCloudPose(id,trans))
+			{
+			//add cloud if id not recognized
+			PointCloud::Ptr tmp=registrar->getPCL();
+	  		pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(tmp);
+			viewer->addPointCloud(tmp,rgb,id,v1);
+			//update pose
+			if(!viewer->updatePointCloudPose(id,trans))
+				ROS_WARN_STREAM("no pointcloud with id: " << id);
+			}
+		}
+	}
+	/*if(registrar->PCLUpdate())
 		viewer->updatePointCloud(registrar->getPCL(),"cloud");
-	//viewer->updatePointCloud(registrar->getDepth(),"depth");
+	//viewer->updatePointCloud(registrar->getDepth(),"depth");*/
     viewer->spinOnce (100);
     boost::this_thread::sleep (boost::posix_time::microseconds (100000));
   }
 	printf("Shutting down... \n");
 	ros::shutdown();
 	rosThread.join();
+	delete registrar;
+	delete visor;
+	delete pcl_analyse;
+	delete graph;
 	printf("Done. \n");
 
 }

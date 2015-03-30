@@ -11,7 +11,7 @@ typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
 class PCL_registration
 {
     public:
-        PCL_registration();
+        PCL_registration(KeyFrameGraph*);
         virtual ~PCL_registration();
         void addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr);
 	void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
