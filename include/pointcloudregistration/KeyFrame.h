@@ -43,7 +43,6 @@ private:
 	float fxi,fyi,cxi,cyi;
 	int width, height;
 	void refreshPCL();
-	bool cloudValid;
 	boost::mutex cloudMutex;
 
 	float my_scaledTH, my_absTH, my_scale;

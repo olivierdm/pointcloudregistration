@@ -1,5 +1,6 @@
 #include "pointcloudregistration/vision.h"
 
+
 Vision::Vision():nh("~"),it(nh)
 {
 	image_lsd = it.advertise("lsd",1);
@@ -15,13 +16,16 @@ Vision::Vision():nh("~"),it(nh)
 }
 Vision::~Vision()
 {
+	std::cout<<"called vision destructor"<< std::endl;
 	//destroy thread
 	{
 		boost::mutex::scoped_lock lock(imageMutex);
 		wantExit=true;
-		newData.notify_one();
+		newData.notify_all();
 	}
+	std::cout<<"waiting for thread to close"<< std::endl;
 	worker.join();
+	std::cout<<"visor destroyed"<< std::endl;
 	//dtor
 }
 void Vision::threadLoop()

@@ -21,7 +21,11 @@
 #include "pointcloudregistration/settings.h"
 
 
-
+//max points
+float	minZ=0.3f;
+float	maxZ=3.0f;
+//scaling factor depthprogramming
+float scaleDepthImage = 3.0f;
 // new:
 float pointTesselation = 1;
 float lineTesselation = 2;
@@ -33,8 +37,8 @@ bool showConstraints = true;
 bool showCurrentCamera = true;
 bool showCurrentPointcloud = true;
 
-float scaledDepthVarTH = 0.25;
-float absDepthVarTH = 0.35;
+float scaledDepthVarTH = 0.05;
+float absDepthVarTH = 0.05;
 int minNearSupport = 5;
 int cutFirstNKf = 5;
 int sparsifyFactor = 1;

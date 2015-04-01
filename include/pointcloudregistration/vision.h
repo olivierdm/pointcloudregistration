@@ -6,7 +6,7 @@
 #include <sensor_msgs/image_encodings.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <boost/thread.hpp>
-
+#include <sensor_msgs/Imu.h>
 class Vision
 {
     public:

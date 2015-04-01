@@ -2,12 +2,11 @@
 #include "pointcloudregistration/settings.h"
 #include <pcl/common/transforms.h>
 
-KeyFrame::KeyFrame(): cloud (new PointCloud)
+KeyFrame::KeyFrame(): cloud (new PointCloud), width(0), originalInput(0),height(0)
 {
-	originalInput = 0;
+	//originalInput = 0;
 	my_scaledTH = my_absTH =0;
-	width=height=0;
-	cloudValid=false;
+	//width=height=0;
 	camToWorld = Sophus::Sim3f();
 }
 KeyFrame::~KeyFrame()
@@ -136,7 +135,6 @@ void KeyFrame::refreshPCL()
 
 	Mdepth/=cloud->width;
        ROS_INFO_STREAM("cloud "<< id << ": error 1: "<< err1 << " error 2: "<< err2 << " error 3: " << err3 << " number of points: " << cloud->width << " Mean depth: "<< Mdepth);
-cloudValid=true;
 }
 sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg()
 {

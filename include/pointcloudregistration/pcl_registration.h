@@ -6,6 +6,7 @@
 #include "sophus/sim3.hpp"
 #include "pointcloudregistration/KeyFrameGraph.h"
 #include "pointcloudregistration/KeyFrame.h"
+#include <map>
 typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
 
 class PCL_registration
@@ -15,21 +16,17 @@ class PCL_registration
         virtual ~PCL_registration();
         void addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr);
 	void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
-	bool PCLUpdate();
-	void getDepthImage(lsd_slam_viewer::keyframeMsgConstPtr);
 
     protected:
     private:
 	ros::NodeHandle nh;
 	ros::Publisher pub;
-    	PointCloud::Ptr cloud,depth;
-	boost::mutex meddleMutex, depthMutex;
+	boost::mutex meddleMutex;
 	KeyFrameGraph* graph;
-	int currentCamID, inter;
-	void calcBox(lsd_slam_viewer::keyframeMsgConstPtr msg);
-	float minX, maxX,minY,maxY,minZ,maxZ;
-
-
+	std::map<int, PointCloud::Ptr> cloudsByID;
+	boost::thread visualiser;
+	void visualiserThread();
+	bool update,wantExit;
 };
 
 #endif // PCL_registration_H

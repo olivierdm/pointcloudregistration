@@ -20,7 +20,9 @@
 
 #pragma once
 
-
+extern float minZ;
+extern float maxZ;
+extern float scaleDepthImage;
 extern float pointTesselation;
 extern float lineTesselation;
 

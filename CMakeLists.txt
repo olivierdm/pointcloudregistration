@@ -13,6 +13,7 @@ std_msgs
 cmake_modules
 pcl_ros
 image_transport
+message_filters
 cv_bridge)
 ## find_package(OpenGL REQUIRED)
 ## find_package(QGLViewer REQUIRED)
@@ -93,7 +94,7 @@ find_package(Boost REQUIRED COMPONENTS thread system)
 catkin_package(
   INCLUDE_DIRS include
  # LIBRARIES vision
-  CATKIN_DEPENDS rosconsole sensor_msgs pcl_ros
+  CATKIN_DEPENDS rosconsole sensor_msgs pcl_ros image_transport
 #  DEPENDS OpenCV
 )
 # not compatible with pcl
@@ -126,7 +127,7 @@ set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADE
 # add_dependencies(vision_node vision_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
- target_link_libraries(registrar ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES})
+ target_link_libraries(registrar ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS})
 #############
 ## Install ##
 #############
