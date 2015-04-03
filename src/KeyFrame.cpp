@@ -1,22 +1,35 @@
+//! KeyFrame class
+/*! 
+This class is used to store the received keyframes and their attributes.
+*/
 #include "pointcloudregistration/KeyFrame.h"
 #include "pointcloudregistration/settings.h"
 #include <pcl/common/transforms.h>
 
-KeyFrame::KeyFrame(): cloud (new PointCloud), width(0), originalInput(0),height(0)
+KeyFrame::KeyFrame(): cloud (new PointCloud), width(0),height(0),my_scaledTH(0.0f), my_absTH(0.0f) , originalInput(0)
 {
-	//originalInput = 0;
-	my_scaledTH = my_absTH =0;
-	//width=height=0;
+/// 
+/// \brief Default constructor, solely used to initialize private members.
+///
 	camToWorld = Sophus::Sim3f();
 }
 KeyFrame::~KeyFrame()
 {
-    delete[] originalInput;
+///
+/// \brief Default destructor that clears the inputdata.
+///
+	cloud->clear();
+	delete[] originalInput;
 }
 
 void KeyFrame::setFrom(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
-	// copy over campose.
+///
+/// \brief Copies the data from the incoming message.
+///
+/// Copies the camera pose and camera parameters. Then it checks if the input is correctly sized and casts the pointcloud data.
+/// @param[in] msg keyframe message
+/// 
 	memcpy(camToWorld.data(), msg->camToWorld.data(), 7*sizeof(float));
 
 	fx = msg->fx;
@@ -65,12 +78,17 @@ void KeyFrame::setFrom(lsd_slam_viewer::keyframeMsgConstPtr msg)
 
 void KeyFrame::refreshPCL()
 {
-		bool paramsStillGood = my_scaledTH == scaledDepthVarTH &&
-			my_absTH == absDepthVarTH &&
-			my_scale*1.2 > camToWorld.scale() &&
-			my_scale < camToWorld.scale()*1.2 &&
-			my_minNearSupport == minNearSupport &&
-			my_sparsifyFactor == sparsifyFactor;
+///
+/// \brief Renders or rerenders the pcl cloud from the incoming data.
+///
+/// Checks if the local parameters still correspond to the global parameters. If not the pcl cloud is cleared and the input data is rendered in the pcl cloud.
+///
+	bool paramsStillGood = my_scaledTH == scaledDepthVarTH &&
+		my_absTH == absDepthVarTH &&
+		my_scale*1.2 > camToWorld.scale() &&
+		my_scale < camToWorld.scale()*1.2 &&
+		my_minNearSupport == minNearSupport &&
+		my_sparsifyFactor == sparsifyFactor;
 	if(paramsStillGood){
 	//ROS_INFO("params still good");
 		return;
@@ -138,6 +156,9 @@ void KeyFrame::refreshPCL()
 }
 sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg()
 {
+///
+/// \brief converts the local pointcloud to a ros compatible message and passes the pointer.
+///
 	boost::mutex::scoped_lock lock(cloudMutex);
 	sensor_msgs::PointCloud2::Ptr pclMsg(new sensor_msgs::PointCloud2) ;
 	refreshPCL();
@@ -150,13 +171,21 @@ sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg()
 }
 PointCloud::Ptr KeyFrame::getPCL()
 {
+///
+/// \brief Passes back a pointer to the local cloud and locks the cloud for internal use.
+///
+/// The cloudMutex is locked and the pointer is passed. This method has a blocking behauviour if lock is optained by other local method. KeyFrame::release() can be used to unlock the lock.
+///
 	cloudMutex.lock();
 	refreshPCL();
-	ROS_INFO_STREAM("locking cloud "<< id << "size: " <<cloud->width);
+	ROS_DEBUG_STREAM("locking cloud "<< id << "size: " <<cloud->width);
 	return cloud;
 }
 void KeyFrame::release()
 {
-	ROS_INFO_STREAM("unlocking cloud "<< id );
+///
+/// \brief Releases the lock. Schould be used after KeyFrame::getPcl().
+///
+	ROS_DEBUG_STREAM("unlocking cloud "<< id );
 	cloudMutex.unlock();
 }

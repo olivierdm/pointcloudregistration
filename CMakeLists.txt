@@ -113,7 +113,7 @@ link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
 set(HEADER_DIR include/pointcloudregistration)
-set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADER_DIR}/pcl_registration.h ${HEADER_DIR}/settings.h ${HEADER_DIR}/vision.h ${HEADER_DIR}/pcl_analyser.h)
+set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADER_DIR}/pcl_registration.h ${HEADER_DIR}/settings.h ${HEADER_DIR}/vision.h ${HEADER_DIR}/pcl_analyser.h ${HEADER_DIR}/datastructures.h)
 
 ## Declare a cpp library
 # add_library(vision

@@ -21,8 +21,8 @@ class PCL_analyser
         virtual ~PCL_analyser();
 	void process(lsd_slam_viewer::keyframeMsgConstPtr);
 	bool ready();
-	PointCloud::Ptr getCloud();
-	void release();
+	//PointCloud::Ptr getCloud();
+	//void release();
     protected:
     private:
 	ros::NodeHandle nh;

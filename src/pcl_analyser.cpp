@@ -27,17 +27,25 @@ PCL_analyser::~PCL_analyser()
 	worker.join();
 	//dtor
 }
+/*
 PointCloud::Ptr PCL_analyser::getCloud()
 {
 	cloudMtx.lock();
 	return cloud;
-}
-void PCL_analyser::release()
+}*/
+/*void PCL_analyser::release()
 {
 	cloudMtx.unlock();
-}
+}*/
 void PCL_analyser::getDepthImage()
 {
+///
+/// \brief Generates a depth image from the received keyframes
+///
+/// The function gets the currently received keyframes from the keyFrameGraph instance and transforms them to
+/// coordinates in the liveframe axes. This set of accumulated points is then projected using the camera parameters
+/// to get a depth image that corresponds with the image captured by camera.
+///
 	std::vector<KeyFrame*> keyframes = graph->getFrames();
 	int x,y,num(0);
 	float pixel;
@@ -88,7 +96,10 @@ void PCL_analyser::getDepthImage()
 }
 void PCL_analyser::process(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
-	//accept the new data
+///
+/// \brief  Accepts the data of a liveframe message and copies the neccesary data to the adequate private variables.
+/// @param[in] msg a liveframe message
+/// 
 	{
 		boost::mutex::scoped_lock lock(frameMutex);
 		memcpy(camToWorld.data(), msg->camToWorld.data(), 7*sizeof(float));
@@ -110,6 +121,10 @@ void PCL_analyser::process(lsd_slam_viewer::keyframeMsgConstPtr msg)
 }
 void PCL_analyser::threadLoop()
 {
+///
+/// \brief This method is started in a different thread and waits for data. Upon reception of new data the methods
+/// PCL_analyser::getDepthImage() and PCL_analyser::calcCurvature() are called.
+///
 	ROS_INFO("pcl analyser thread started");
 	while(true)
 	{
@@ -128,10 +143,16 @@ void PCL_analyser::threadLoop()
 }
 void PCL_analyser::calcCurvature()
 {
+///
+/// \brief calc the curvature using the constructed depth image.
+///
 	ROS_INFO("dummy calc curvature");
 }
 bool PCL_analyser::ready()
 {
+///
+/// \brief Checks if the frameMutex is still locked and thus the worker thread still occupied with the previous task
+///
 	boost::mutex::scoped_lock lock(frameMutex, boost::try_to_lock);
 	if(lock)
 	{

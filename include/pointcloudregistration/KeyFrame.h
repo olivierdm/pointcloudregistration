@@ -3,15 +3,9 @@
 #include "sophus/sim3.hpp"
 #include "pcl_conversions/pcl_conversions.h"
 #include "boost/thread.hpp"
+#include "pointcloudregistration/datastructures.h"
 
 
-typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
-struct InputPointDense
-{
-	float idepth;
-	float idepth_var;
-	unsigned char color[4];
-};
 
 // stores a pointcloud associated to a Keyframe.
 class KeyFrame
@@ -31,17 +25,17 @@ public:
 	double time;
 	void release();
 	int totalPoints, displayedPoints;
-
-	// camera pose
-	// may be updated by kf-graph.
-	Sophus::Sim3f camToWorld;
+	/// camera pose, may be updated by kf-graph.
+	Sophus::Sim3f camToWorld; 
 
 private:
-	// camera parameter
-	// fixed.
-	float fx,fy,cx,cy;
+	float fx; ///< focal length in x direction
+	float fy; ///< focal length in y direction
+	float cx; ///< first ordinate of the camera's principal point
+	float cy; ///< second ordinate of th camera's principal point
 	float fxi,fyi,cxi,cyi;
-	int width, height;
+	int width;///< image height
+	int height;///< image width
 	void refreshPCL();
 	boost::mutex cloudMutex;
 
@@ -50,8 +44,9 @@ private:
 	int my_sparsifyFactor;
 
 
-	// pointcloud data & respective buffer
+	/// pointcloud data in pcl format, stays always in the local coordinates of the keyframe
 	PointCloud::Ptr cloud;
+	/// datastructure for casting the incomming message
 	InputPointDense* originalInput;
 };
 

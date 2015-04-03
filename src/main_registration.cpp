@@ -1,3 +1,6 @@
+/**
+@file main_registration.cpp
+*/
 #include "ros/ros.h"
 #include <image_transport/image_transport.h>
 #include <message_filters/subscriber.h>
@@ -42,8 +45,14 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 	pcl_analyse->process(frameMsg);
 }
 
-void rosThreadLoop( int argc, char** argv )
+void rosThreadLoop()
 {
+///
+/// \brief This void function takes care of handling the different subscribers and is started on startup.
+///
+/// A set of ROS filters are coupled to obtain time syncronization between the IMU, camera and the pose estimated by lsd-slam.
+/// The approximate time sync policy is chosen because there is a difference in frequency between the different topics
+///
 	printf("Started ROS thread\n");
 
 
@@ -73,7 +82,7 @@ int main( int argc, char** argv )
 	boost::thread rosThread;
 	// start ROS thread
 	ros::init(argc, argv, "registrar");
-	rosThread = boost::thread(rosThreadLoop, argc, argv);
+	rosThread = boost::thread(rosThreadLoop);
 
 	visor = new Vision();
 	graph = new KeyFrameGraph();

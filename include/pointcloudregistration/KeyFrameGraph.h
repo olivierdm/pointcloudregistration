@@ -1,6 +1,6 @@
 
-#ifndef KEYFRAMEGRAPHDISPLAY_H_
-#define KEYFRAMEGRAPHDISPLAY_H_
+#ifndef KEYFRAMEGRAPH_H_
+#define KEYFRAMEGRAPH_H_
 
 
 #include "lsd_slam_viewer/keyframeGraphMsg.h"
@@ -8,31 +8,9 @@
 #include "boost/thread.hpp"
 #include "pcl_ros/point_cloud.h"
 #include "pcl/point_types.h"
-
-typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
-class KeyFrame;
+#include "pointcloudregistration/datastructures.h"
 
 
-struct GraphConstraint
-{
-	int from;
-	int to;
-	float err;
-};
-
-
-struct GraphConstraintPt
-{
-	KeyFrame* from;
-	KeyFrame* to;
-	float err;
-};
-
-struct GraphFramePose
-{
-	int id;
-	float camToWorld[7];
-};
 
 
 class KeyFrameGraph{
@@ -41,9 +19,9 @@ public:
 	virtual ~KeyFrameGraph();
 
 	void draw();
-	PointCloud::Ptr getPCL();
+	//PointCloud::Ptr getPCL();
 	bool PCLUpdate();
-	void refreshPCL();
+	//void refreshPCL();
 	sensor_msgs::PointCloud2::Ptr addMsg(lsd_slam_viewer::keyframeMsgConstPtr);
 	void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
 	std::vector<KeyFrame*> getFrames();
@@ -52,10 +30,10 @@ private:
 	std::map<int, KeyFrame*> keyframesByID;
 	std::vector<KeyFrame*> keyframes;
 	std::vector<GraphConstraintPt> constraints;
-	PointCloud::Ptr cloud;
+	//PointCloud::Ptr cloud;
 	boost::mutex cloudMutex,graphMutex;
 	bool cloudUpdate;
 
 };
 
-#endif /* KEYFRAMEGRAPHDISPLAY_H_ */
+#endif /* KEYFRAMEGRAPH_H_ */

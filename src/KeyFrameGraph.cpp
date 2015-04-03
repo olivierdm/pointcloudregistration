@@ -4,17 +4,22 @@
 #include "pointcloudregistration/KeyFrame.h"
 #include "ros/package.h"
 
-KeyFrameGraph::KeyFrameGraph():cloud (new PointCloud)
+KeyFrameGraph::KeyFrameGraph(): cloudUpdate(false)//,cloud (new PointCloud)
 {
-	cloudUpdate=false;
+///
+/// \brief default constructor
+///
 }
 
 KeyFrameGraph::~KeyFrameGraph()
 {
+///
+/// \brief The default destructor cleans up the keyframes in the graph
+///
 	for(std::size_t i=0;i<keyframes.size();i++)
 		delete keyframes[i];
 }
-
+/*
 void KeyFrameGraph::refreshPCL()
 {
 
@@ -33,7 +38,7 @@ PointCloud::Ptr KeyFrameGraph::getPCL()
 	boost::mutex::scoped_lock lock(cloudMutex);
 	*retCloud = *cloud;
 	return retCloud;
-}
+}*/
 bool KeyFrameGraph::PCLUpdate()
 {
 	boost::mutex::scoped_lock lock(cloudMutex);
@@ -43,6 +48,10 @@ bool KeyFrameGraph::PCLUpdate()
 }
 sensor_msgs::PointCloud2::Ptr KeyFrameGraph::addMsg(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
+/** 
+\brief Adds a new keyframe to the graph and returns a ros message
+@param[in] msg keyframe message
+*/ 
 	{
 	boost::mutex::scoped_lock lock(graphMutex);
 	if(keyframesByID.count(msg->id) == 0)
@@ -62,6 +71,10 @@ sensor_msgs::PointCloud2::Ptr KeyFrameGraph::addMsg(lsd_slam_viewer::keyframeMsg
 
 void KeyFrameGraph::addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 {
+/**
+\brief Updates the graph constraints and updates the newly calculated poses.
+@param[in] msg keyframe graph message
+*/
 	boost::mutex::scoped_lock lock(graphMutex);
 	constraints.resize(msg->numConstraints);
 	assert(msg->constraintsData.size() == sizeof(GraphConstraint)*msg->numConstraints);
@@ -111,6 +124,7 @@ void KeyFrameGraph::addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 }
 std::vector<KeyFrame*> KeyFrameGraph::getFrames()
 {
+/** \brief Returns an array of pointers to the current set of keyframes. */
 	boost::mutex::scoped_lock lock(graphMutex);
 	return keyframes;
 }

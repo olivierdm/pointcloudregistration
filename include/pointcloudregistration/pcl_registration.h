@@ -6,8 +6,9 @@
 #include "sophus/sim3.hpp"
 #include "pointcloudregistration/KeyFrameGraph.h"
 #include "pointcloudregistration/KeyFrame.h"
+#include "pointcloudregistration/datastructures.h"
 #include <map>
-typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
+
 
 class PCL_registration
 {
@@ -26,7 +27,7 @@ class PCL_registration
 	std::map<int, PointCloud::Ptr> cloudsByID;
 	boost::thread visualiser;
 	void visualiserThread();
-	bool update,wantExit;
+	bool wantExit;
 };
 
 #endif // PCL_registration_H
