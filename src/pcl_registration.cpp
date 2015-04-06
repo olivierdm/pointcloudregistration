@@ -51,24 +51,28 @@ void PCL_registration::visualiserThread()
 	Eigen::Affine3f trans;
 	std::vector<KeyFrame*> keyframes;
 	ROS_INFO("started viewer");
+	int size=0;
 while (!wantExit)
   {
 	keyframes=graph->getFrames();
-
 	if(graph->PCLUpdate())
 	{ 
 		for(std::size_t i=0;i<keyframes.size();i++)
 		{
 			trans=keyframes[i]->camToWorld.matrix();
 			std::string id = boost::lexical_cast<std::string>(keyframes[i]->id);
+		ROS_INFO_STREAM("cloud: "<< keyframes[i]->id);
 			if(!viewer->updatePointCloudPose(id,trans))
 			{
 			//add cloud if id not recognized
 			PointCloud::Ptr tmp(new PointCloud);
 			*tmp=*(keyframes[i]->getPCL());
 			cloudsByID[keyframes[i]->id]=tmp;
-	  		pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(cloudsByID[keyframes[i]->id]);
-			viewer->addPointCloud(cloudsByID[keyframes[i]->id],rgb,id);
+			size+=tmp->width;
+			ROS_INFO_STREAM("size viewer: "<< size);
+	  		//pcl::visualization::PointCloudColorHandlerRGBField<Point> rgb(cloudsByID[keyframes[i]->id]);
+			viewer->addPointCloud(cloudsByID[keyframes[i]->id]/*,rgb*/,id);
+			ROS_DEBUG_STREAM("adding keyframe");
 			viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1,id);
 			//update pose
 			if(!viewer->updatePointCloudPose(id,trans))

@@ -10,10 +10,8 @@
 #include "pcl_ros/point_cloud.h"
 #include "pcl/point_types.h"
 #include <boost/thread.hpp>
-#include "pointcloudregistration/pcl_registration.h"
-
-typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
-
+#include "pointcloudregistration/datastructures.h"
+class KeyFrameGraph;
 class PCL_analyser
 {
     public:
@@ -26,9 +24,9 @@ class PCL_analyser
     protected:
     private:
 	ros::NodeHandle nh;
-	image_transport::ImageTransport it;
-	image_transport::Publisher pub;
-    	PointCloud::Ptr cloud,depth, boundingbox;
+	image_transport::ImageTransport it,it2;
+	image_transport::Publisher pub,pub2;
+    	PointCloud::Ptr cloud, depth;
 	boost::condition_variable newData,openCVdisplaySignal;
 	boost::thread worker;
 	boost::mutex frameMutex,cloudMtx;
@@ -46,6 +44,7 @@ class PCL_analyser
 	Eigen::Matrix4f soph;
 	int my_scaleDepthImage;
 	cv::Mat depthImg;
+	cv::UMat filt;
 	sensor_msgs::ImagePtr msg;
 };
 

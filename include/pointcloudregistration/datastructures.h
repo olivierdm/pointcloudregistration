@@ -1,6 +1,8 @@
 #ifndef DATASTRUCTURES_H_
 #define DATASTRUCTURES_H_
-typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloud;
+typedef pcl::PointXYZ Point;
+typedef pcl::PointCloud<Point> PointCloud;
+
 class KeyFrame;
 /** \brief Struct used for casting the incoming point cloud data. */
 struct InputPointDense

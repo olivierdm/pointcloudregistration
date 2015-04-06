@@ -5,6 +5,7 @@ This class is used to store the received keyframes and their attributes.
 #include "pointcloudregistration/KeyFrame.h"
 #include "pointcloudregistration/settings.h"
 #include <pcl/common/transforms.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 
 KeyFrame::KeyFrame(): cloud (new PointCloud), width(0),height(0),my_scaledTH(0.0f), my_absTH(0.0f) , originalInput(0)
 {
@@ -107,6 +108,7 @@ void KeyFrame::refreshPCL()
 	float Mdepth=0;
     float my_scale = camToWorld.scale();
     int idx;
+	PointCloud::Ptr unfiltered(new PointCloud);
     for(int y=1; y<height-1; y++)
         for(int x=1; x<width-1; x++)
         {
@@ -116,7 +118,7 @@ void KeyFrame::refreshPCL()
             if(originalInput[x+y*width].idepth_var * depth4 > my_scaledTH){
 		err1++;
 		continue;
-	}
+		}
 		if(originalInput[x+y*width].idepth_var * depth4 * my_scale*my_scale > my_absTH){
 			err2++;
 			continue;
@@ -144,13 +146,18 @@ void KeyFrame::refreshPCL()
 
 
 		Mdepth+=depth;
-           pcl::PointXYZRGB point(originalInput[x+y*width].color[0], originalInput[x+y*width].color[1],originalInput[x+y*width].color[2]);
+         //  pcl::PointXYZRGB point(originalInput[x+y*width].color[0], originalInput[x+y*width].color[1],originalInput[x+y*width].color[2]);
+	Point point;
             point.x=(x*fxi + cxi)*depth;
             point.y=(y*fyi + cyi)*depth;
             point.z=depth;
-		cloud->push_back(point);
+		unfiltered->push_back(point);
         }
-
+  pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+  sor.setInputCloud (unfiltered);
+  sor.setMeanK (50);
+  sor.setStddevMulThresh (1.0);
+  sor.filter (*cloud);
 	Mdepth/=cloud->width;
        ROS_INFO_STREAM("cloud "<< id << ": error 1: "<< err1 << " error 2: "<< err2 << " error 3: " << err3 << " number of points: " << cloud->width << " Mean depth: "<< Mdepth);
 }

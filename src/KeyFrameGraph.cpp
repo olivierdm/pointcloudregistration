@@ -65,6 +65,7 @@ sensor_msgs::PointCloud2::Ptr KeyFrameGraph::addMsg(lsd_slam_viewer::keyframeMsg
 
 	keyframesByID[msg->id]->setFrom(msg);
 	}
+	cloudUpdate=true;
 	sensor_msgs::PointCloud2::Ptr ros_msg = keyframesByID[msg->id]->getROSMsg();
 	return ros_msg;
 }
