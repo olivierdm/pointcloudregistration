@@ -38,6 +38,8 @@ class PCL_analyser
 	float fx,fy,cx,cy;
 	void getDepthImage();
 	void threadLoop();
+	void filterDepth();
+	void writeHist(float,float,int,cv::UMat);
 	std::vector<KeyFrame*> keyframes;
 	std_msgs::Header header;
 	KeyFrameGraph* graph;

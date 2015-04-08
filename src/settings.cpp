@@ -8,7 +8,7 @@
 /// Minimal distance to camera sensor in liveframe that will be considered.
 float	minZ=0.1f;
 /// Maximal distance from camera sensor in liveframe that will be considered.
-float	maxZ=5.0f;
+float	maxZ=2.0f;
 /// Factor that determines the size of depth image with respect to the visual image.
 float scaleDepthImage = 5.0f;
 // new:

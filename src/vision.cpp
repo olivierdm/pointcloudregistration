@@ -1,10 +1,15 @@
 #include "pointcloudregistration/vision.h"
-
+#include <opencv2/opencv.hpp>
 
 Vision::Vision():nh("~"),it(nh)
 {
 	image_lsd = it.advertise("lsd",1);
+	//image_detect = it.advertise("detect",1);
 	ls = cv::createLineSegmentDetector(cv::LSD_REFINE_STD);
+	//stair_cascade_name = "stair_cascade.xml";
+	//if( !stair_cascade.load( stair_cascade_name ) ){ printf("--(!)Error loading\n");  };
+
+
 	wantExit=false;
 	data_ready=false;
 	//initiate lsd image
@@ -42,6 +47,7 @@ void Vision::threadLoop()
 		if(wantExit)
 			return;
 		getLines();
+		//detect();
 	}
 }
 void Vision::getLines()
@@ -51,13 +57,36 @@ void Vision::getLines()
 	cv_lsd_ptr->header.stamp =cv_input_ptr->header.stamp;
 	cv_lsd_ptr->header.seq =cv_input_ptr->header.seq;
 	//convert to grayscale
+	cv::imwrite("/home/rosuser/Downloads/input.png",cv_input_ptr->image);
+	cv_lsd_ptr->image=cv_input_ptr->image.clone();
 	cv::cvtColor(cv_input_ptr->image,InputGray,cv::COLOR_BGR2GRAY);
+	cv::imwrite("/home/rosuser/Downloads/inputclone.png",cv_lsd_ptr->image);
 	//detect using lsd
 	ls->detect(InputGray, lines_std);
-	cv_lsd_ptr->image=cv_input_ptr->image.clone();
+	ROS_INFO_STREAM("detected "<< lines_std.size() << " lines");
+
 	ls->drawSegments(cv_lsd_ptr->image, lines_std);
+	/*for(size_t i=0; i <  lines_std.size() ; i++)
+	{
+		cv::line(cv_lsd_ptr->image,cv::Point(lines_std[i][0],lines_std[i][1]),cv::Point(lines_std[i][2],lines_std[i][3]),cv::Scalar(0,0,255));
+}*/
+	cv::imwrite("/home/rosuser/Downloads/lines.png",cv_lsd_ptr->image);
 	image_lsd.publish(cv_lsd_ptr->toImageMsg());
 }
+/*void Vision::detect()
+{
+	std::vector<cv::Rect> stairs;
+	cv::equalizeHist( InputGray, InputGray );
+
+  //-- Detect faces
+	stair_cascade.detectMultiScale(  InputGray , stairs, 1.1, 2, 0|CV_HAAR_SCALE_IMAGE, cv::Size(40, 40) );
+
+  for( size_t i = 0; i < stairs.size(); i++ )
+  {
+	cv::rectangle(cv_input_ptr->image, stairs[i], cv::Scalar( 255, 0, 255 ), 4, 8,0);
+  }
+	image_detect.publish(cv_input_ptr->toImageMsg());
+}*/
 void Vision::process(const sensor_msgs::ImageConstPtr& msg)
 {
 	//accept the new data

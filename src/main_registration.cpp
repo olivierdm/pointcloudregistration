@@ -46,18 +46,7 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 	visor->process(imgMsg);
 	pcl_analyse->process(frameMsg);
 }
-void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::keyframeMsg::ConstPtr &frameMsg)
-{
-	if(pcl_analyse==0 || visor==0||!firstKF)
-		return;
-	//check if both are ready
-	if(!(visor->ready()) || !(pcl_analyse->ready()))
-		return;
-	//pass the data and do processing
-	ROS_INFO("in callback");
-	visor->process(imgMsg);
-	pcl_analyse->process(frameMsg);
-}
+
 void rosThreadLoop()
 {
 ///
@@ -79,12 +68,9 @@ void rosThreadLoop()
 	message_filters::Subscriber<lsd_slam_viewer::keyframeMsg> liveFrames_sub(nh,nh.resolveName("lsd_slam/liveframes"), 1);
 	message_filters::Subscriber<sensor_msgs::Imu> imu_sub(nh,nh.resolveName("/ardrone/imu"),1);
 	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, lsd_slam_viewer::keyframeMsg, sensor_msgs::Imu> MySyncPolicy;
-	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, lsd_slam_viewer::keyframeMsg> MySyncPolicy1;
 	//ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
-	//message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), image_sub, liveFrames_sub, imu_sub);
-	//sync.registerCallback(boost::bind(&callback, _1, _2,_3));
-	message_filters::Synchronizer<MySyncPolicy1> sync1(MySyncPolicy1(10), image_sub, liveFrames_sub);
-	sync1.registerCallback(boost::bind(&callback, _1, _2));
+	message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), image_sub, liveFrames_sub, imu_sub);
+	sync.registerCallback(boost::bind(&callback, _1, _2,_3));
 	ROS_INFO("subscribers initialized - going for a spin");
 	ros::spin();
 	ros::shutdown();
