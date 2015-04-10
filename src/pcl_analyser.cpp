@@ -15,7 +15,18 @@
 #include <fstream>
 #include <string>
 
-
+struct framedist{
+	framedist(KeyFrame* key,Sophus::Sim3f camToWorld):frame(key)
+	{
+		soph = (camToWorld.inverse()*frame->camToWorld).matrix();
+		Eigen::Vector3f(0.0f,0.0f,1.0f);
+	}
+	KeyFrame* frame;
+	float dist;
+	Eigen::Matrix4f soph;
+	bool operator<(const framedist& rhs) const
+		{return dist < rhs.dist;}
+};
 PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud),nh("~"),it(nh),it2(nh),graph(keyGraph)
 {
 	pub = it.advertise("depth",1);
@@ -64,6 +75,10 @@ void PCL_analyser::getDepthImage()
 	boost::mutex::scoped_lock lock(cloudMtx);
 	cloud->clear();
 	depthImg.setTo(maxZ);
+	//need to insert function that calculates clouds that are in region of interest
+	//select randomly
+	std::random_shuffle(keyframes.begin(),keyframes.end());
+	int k=0;
 	for(std::size_t i=0;i<keyframes.size();i++)
 	{
 		//get keyframe in analysed keyframe
@@ -72,6 +87,8 @@ void PCL_analyser::getDepthImage()
 		keyframes[i]->release();
 		*cloud+=*depth;
 		ROS_INFO_STREAM("cloud: "<< keyframes[i]->id);
+		if(k++>5)
+			break;
 	}
  	assert(width == depthImg.cols && height == depthImg.rows);
 	for(PointCloud::iterator it = cloud->begin(); it != cloud->end(); it++){ 
@@ -191,16 +208,16 @@ void PCL_analyser::calcCurvature()
 	cv::multiply(normx.mul(normx),hxx,hxx);
 	cv::multiply(normy.mul(normy),hyy,hyy);
 	cv::multiply(normy.mul(normx),hxy,hxy);
-	cv::UMat Kden,Knom,K,H,CI,CInom,CIden,Hden,mask32,mask8,Hnom1,Hnom2,Hnom3;
+	cv::UMat Kden,Knom,K,H,CI,CInom,CIden,Hden,mask32,Hnom1,Hnom2,Hnom3;
 
 	cv::pow(hx,2,hx2);
 	cv::pow(hy,2,hy2);
 //////// calculate K
 	//1+hx^2 + hy^2
 	cv::addWeighted(hx2,1.0,hy2,1.0,1.0,Kden);
-	//power with non int values need treatment for negative values because it takes the power of the absolute value
+	//power with non int values need treatment for negative values because it takes the power of the absolute value, this is not needed here as argument is always positive
 	cv::pow(Kden,1.5,Hden);
-	cv::pow(Kden,2,Kden);
+	cv::pow(Kden.clone(),2,Kden);
 	//hxx*hyy-hxy^2
 	cv::subtract(hxx.mul(hyy),hxy.mul(hxy),Knom);
 	cv::divide(Knom,Kden,K);
@@ -214,44 +231,34 @@ void PCL_analyser::calcCurvature()
 	//(1+hx^2)*hyy+2*hx*hy*hxy
 	cv::subtract(Hnom1.mul(hyy),Hnom2,Hnom1);
 	//(1+hx^2)*hyy+2*hx*hy*hxy + (1+hy^2)*hxx
-	cv::add(Hnom1,Hnom3.mul(hxx),Hnom1);
+	cv::add(Hnom1.clone(),Hnom3.mul(hxx),Hnom1);
 	cv::divide(Hnom1,Hden,H);
 	cv::multiply(0.5,H,H);
 //////// calculate CI
-	cv::Mat structElm = cv::getStructuringElement(cv::MORPH_RECT,cv::Size(3,3),cv::Point(-1,-1));
-	//cv::dilate(H, H,structElm,cv::Point(-1,-1),1);
-	//cv::dilate(K, K,structElm,cv::Point(-1,-1),1);
 	cv::compare(K,0.0,mask32,cv::CMP_GE);
-	mask32.convertTo(mask8,CV_8UC1);
-	cv::pow(H,2,H);
+	cv::pow(H.clone(),2,H);
 	CInom=H.clone();
 	//H^2 - K
-	cv::subtract(CInom,K,CInom,mask8);
+	cv::subtract(CInom.clone(),K,CInom,mask32);
 	double eps=1.0;
 	//H-eps
 	cv::subtract(H,eps,CIden);
-	//cv::imwrite("/home/rosuser/Downloads/mask1.png",mask8);
-	cv::bitwise_not(mask8,mask8);
-	//cv::imwrite("/home/rosuser/Downloads/mask2.png",mask8);
+	//cv::imwrite("/home/rosuser/Downloads/mask1.png",mask32);
+	cv::bitwise_not(mask32,mask32);
+	//cv::imwrite("/home/rosuser/Downloads/mask2.png",mask32);
 	//H-eps-K
-	cv::subtract(CIden,K,CIden,mask8);
+	cv::subtract(CIden.clone(),K,CIden,mask32);
 	cv::divide(CInom,CIden,CI);
 	ROS_INFO("Sending curvature");
 	cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
 	double minVal,maxVal;
 	cv::minMaxLoc(CI, &minVal, &maxVal);
-	writeHist(-0.1f,1.1f,48,CI);
-
-
+	//writeHist(-0.1f,1.1f,48,CI);
 	cv::compare(CI,0.0,mask32,cv::CMP_LT);
-	int bad = cv::countNonZero(mask32);
 	CI.setTo(0.0,mask32);
 	cv::compare(CI,1.0,mask32,cv::CMP_GT);
-	bad+= cv::countNonZero(mask32);
 	CI.setTo(1.0,mask32);
-	ROS_INFO_STREAM("min: "<< minVal << "max: "<< maxVal << " deleted: " << bad << " size " << cv::countNonZero(CI));
 	CI.convertTo(cv_ptr->image,CV_8UC1,255.0);
-	//cv::normalize(CIv.getMat(cv::ACCESS_READ),cv_ptr->image,0,255,cv::NORM_MINMAX,CV_8UC1);
 	applyColorMap(cv_ptr->image,cv_ptr->image, cv::COLORMAP_AUTUMN);
 	//cv::imwrite("/home/rosuser/Downloads/K.png",K);
 	//cv::imwrite("/home/rosuser/Downloads/H.png",H);
