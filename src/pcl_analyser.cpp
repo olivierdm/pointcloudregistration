@@ -16,18 +16,22 @@
 #include <string>
 
 struct framedist{
-	framedist(KeyFrame* key,Sophus::Sim3f camToWorld):frame(key)
+	framedist(KeyFrame* key,Sophus::Sim3f camToWorld):frame(key),camcenter(0.0f,0.0f,1.0f,1.0f)
 	{
 		soph = (camToWorld.inverse()*frame->camToWorld).matrix();
-		Eigen::Vector3f(0.0f,0.0f,1.0f);
+		camcenterlive = soph*camcenter;
+		dist=(camcenterlive-camcenter).squaredNorm();
+		
 	}
+
+	Eigen::Vector4f camcenter,camcenterlive;
 	KeyFrame* frame;
 	float dist;
 	Eigen::Matrix4f soph;
 	bool operator<(const framedist& rhs) const
 		{return dist < rhs.dist;}
 };
-PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud),nh("~"),it(nh),it2(nh),graph(keyGraph)
+PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): depth(new PointCloud), cloud (new PointCloud), nh("~"),it(nh),it2(nh),graph(keyGraph)
 {
 	pub = it.advertise("depth",1);
 	pub2 = it2.advertise("curvature",1);
@@ -70,23 +74,33 @@ void PCL_analyser::getDepthImage()
 ///
 	std::vector<KeyFrame*> keyframes = graph->getFrames();
 	int x,y,num(0);
-	float pixel;
-
 	boost::mutex::scoped_lock lock(cloudMtx);
 	cloud->clear();
 	depthImg.setTo(maxZ);
 	//need to insert function that calculates clouds that are in region of interest
 	//select randomly
 	std::random_shuffle(keyframes.begin(),keyframes.end());
-	int k=0;
+	//int k=0;
+	std::vector<framedist> mykeyframes;
+
 	for(std::size_t i=0;i<keyframes.size();i++)
 	{
+		mykeyframes.push_back(framedist(keyframes[i],camToWorld));
+	}
+	std::sort(mykeyframes.begin(),mykeyframes.end());
+	int k = std::min(5,static_cast<int>(mykeyframes.size()));
+	mykeyframes.erase(mykeyframes.begin()+k,mykeyframes.end());
+
+	/*std::random_shuffle(mykeyframes.begin(),mykeyframes.end());
+	k = std::min(5,static_cast<int>(mykeyframes.size()));
+	mykeyframes.erase(mykeyframes.begin()+k,mykeyframes.end());*/
+	for(std::size_t i=0;i<mykeyframes.size();i++)
+	{
 		//get keyframe in analysed keyframe
-		soph = (camToWorld.inverse()*keyframes[i]->camToWorld).matrix();
-		pcl::transformPointCloud(*keyframes[i]->getPCL(),*depth,soph);
-		keyframes[i]->release();
+		pcl::transformPointCloud(*mykeyframes[i].frame->getPCL(),*depth,mykeyframes[i].soph);
+		mykeyframes[i].frame->release();
 		*cloud+=*depth;
-		ROS_INFO_STREAM("cloud: "<< keyframes[i]->id);
+		ROS_INFO_STREAM("cloud: "<< mykeyframes[i].frame->id);
 		if(k++>5)
 			break;
 	}
@@ -151,7 +165,7 @@ void PCL_analyser::threadLoop()
 {
 ///
 /// \brief This method is started in a different thread and waits for data. Upon reception of new data the methods
-/// PCL_analyser::getDepthImage() and PCL_analyser::calcCurvature() are called.
+/// PCL_analyser::getDepthImage(), PCL_analyser::filterDepth() and PCL_analyser::calcCurvature() are called.
 ///
 	ROS_INFO("pcl analyser thread started");
 	while(true)
@@ -172,9 +186,14 @@ void PCL_analyser::threadLoop()
 }
 void PCL_analyser::filterDepth()
 {
+///
+/// \brief applies required filtering and resizes the image back to the original size.
+/// Applies first median filter to remove outliers and afterwards region growing to file the holes. Gaussian smoothing is applied to make the derivatis stable.
+///
 	cv::UMat filt_f=depthImg.getUMat(cv::ACCESS_READ);
+	cv::medianBlur(filt_f.clone(),filt_f,4);
 	filt_f.convertTo(filt,CV_64F);
-	cv::Mat structElm = cv::getStructuringElement(cv::MORPH_RECT,cv::Size(7,7),cv::Point(-1,-1));
+	cv::Mat structElm = cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(7,7),cv::Point(-1,-1));
 	cv::erode(depthImg.getUMat(cv::ACCESS_READ), filt,structElm,cv::Point(-1,-1),1);
 	cv::resize(filt,filt,cv::Size(0,0),1.0f/my_scaleDepthImage,1.0f/my_scaleDepthImage,cv::INTER_AREA);
 	cv::GaussianBlur(filt,filt,cv::Size(5,5),2.0);
@@ -184,7 +203,9 @@ void PCL_analyser::calcCurvature()
 ///
 /// \brief calc the curvature using the constructed depth image.
 ///
-/// Calculates filter kernels and applies them.
+/// Calculates filter kernels and applies them. Secondly calculates Gaussian and Mean curvature. After that these values are used to calculate the curvature index. The different cases (K \geq 0, K < 0) are handled using masks.
+///
+
 //create kernels
 	int ksize=5;
 	cv::UMat kx10, ky10, kx01,ky01,kx11,ky11,kx20,ky20,kx02,ky02;
@@ -200,9 +221,9 @@ void PCL_analyser::calcCurvature()
 	cv::sepFilter2D(filt, hxy, CV_64F, kx11, ky11);
 	cv::sepFilter2D(filt, hxx, CV_64F, kx20, ky20);
 	cv::sepFilter2D(filt, hyy, CV_64F, kx02, ky02);
+//normalize derivatives
 	cv::divide(static_cast<double>(fx),filt,normx,1.0,CV_64F);
 	cv::divide(static_cast<double>(fy),filt,normy,1.0,CV_64F);
-//normalize derivatives
 	cv::multiply(normx,hx,hx);
 	cv::multiply(normx,hy,hy);
 	cv::multiply(normx.mul(normx),hxx,hxx);
@@ -215,7 +236,7 @@ void PCL_analyser::calcCurvature()
 //////// calculate K
 	//1+hx^2 + hy^2
 	cv::addWeighted(hx2,1.0,hy2,1.0,1.0,Kden);
-	//power with non int values need treatment for negative values because it takes the power of the absolute value, this is not needed here as argument is always positive
+	//power with non int values need treatment for negative values because it takes the power of the absolute value, this is not needed here as argument is always positive.
 	cv::pow(Kden,1.5,Hden);
 	cv::pow(Kden.clone(),2,Kden);
 	//hxx*hyy-hxy^2
@@ -269,6 +290,9 @@ void PCL_analyser::calcCurvature()
 }
 void PCL_analyser::writeHist(float min, float max, int bins,cv::UMat CI)
 {
+///
+/// \brief Writes histogram to csv file for debug purposes.
+///
 	float ciranges[] = { min, max};
 	const float* ranges[] ={ciranges};
 	cv::MatND hist;
@@ -301,7 +325,7 @@ void PCL_analyser::writeHist(float min, float max, int bins,cv::UMat CI)
 bool PCL_analyser::ready()
 {
 ///
-/// \brief Checks if the frameMutex is still locked and thus the worker thread still occupied with the previous task
+/// \brief Checks if the frameMutex is still locked and thus the worker thread still occupied with the previous task.
 ///
 	boost::mutex::scoped_lock lock(frameMutex, boost::try_to_lock);
 	if(lock)

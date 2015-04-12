@@ -17,10 +17,10 @@ message_filters
 cv_bridge)
 ## find_package(OpenGL REQUIRED)
 ## find_package(QGLViewer REQUIRED)
-find_package(PCL REQUIRED)
+find_package(PCL 1.7 REQUIRED)
 find_package(Eigen REQUIRED)
 find_package(OpenCV REQUIRED) 
-
+find_package(TBB REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS thread system)
@@ -98,9 +98,9 @@ catkin_package(
 #  DEPENDS OpenCV
 )
 # not compatible with pcl
-#set(CMAKE_CXX_FLAGS
- #  "${CMAKE_CXX_FLAGS} -march=native -Wall -std=c++0x"
-#)
+set(CMAKE_CXX_FLAGS
+  "${CMAKE_CXX_FLAGS} -march=native -Wall -std=c++0x"
+)
 
 ###########
 ## Build ##
@@ -127,7 +127,7 @@ set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADE
 # add_dependencies(vision_node vision_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
- target_link_libraries(registrar ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS})
+ target_link_libraries(registrar ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS} ${TBB_LIBRARIES})
 #############
 ## Install ##
 #############

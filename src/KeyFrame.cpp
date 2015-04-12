@@ -7,7 +7,7 @@ This class is used to store the received keyframes and their attributes.
 #include <pcl/common/transforms.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 
-KeyFrame::KeyFrame(): cloud (new PointCloud), width(0),height(0),my_scaledTH(0.0f), my_absTH(0.0f) , originalInput(0)
+KeyFrame::KeyFrame(): cloud (new PointCloud), height(0),width(0), my_scaledTH(0.0f), my_absTH(0.0f) , originalInput(0)
 {
 /// 
 /// \brief Default constructor, solely used to initialize private members.
@@ -104,10 +104,8 @@ void KeyFrame::refreshPCL()
 	 int err1=0;
     int err2=0;
     int err3=0;
-    int num=0;
 	float Mdepth=0;
     float my_scale = camToWorld.scale();
-    int idx;
 	PointCloud::Ptr unfiltered(new PointCloud);
     for(int y=1; y<height-1; y++)
         for(int x=1; x<width-1; x++)

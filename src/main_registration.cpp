@@ -13,7 +13,7 @@
 #include "pointcloudregistration/pcl_analyser.h"
 #include "pointcloudregistration/vision.h"
 #include "pointcloudregistration/settings.h"
-
+#include "tbb/task_group.h"
 #include <Eigen/Geometry>
 #include <iostream>
 
@@ -21,6 +21,7 @@ PCL_registration* registrar=0;
 PCL_analyser* pcl_analyse=0;
 KeyFrameGraph* graph=0;
 Vision* visor=0;
+tbb::task_group g;
 bool firstKF=false;
 
 void frameCb(lsd_slam_viewer::keyframeMsgConstPtr msg)
@@ -34,7 +35,7 @@ void graphCb(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 	if(registrar == 0) return;
 	registrar->addGraphMsg(msg);
 }
-void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::keyframeMsg::ConstPtr &frameMsg, const sensor_msgs::ImuConstPtr &imuMsg)
+void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::keyframeMsgConstPtr &frameMsg, const tum_ardrone::filter_stateConstPtr &poseMsg)
 {
 	if(pcl_analyse==0 || visor==0||!firstKF)
 		return;
@@ -43,7 +44,7 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 		return;
 	//pass the data and do processing
 	ROS_INFO("in callback");
-	visor->process(imgMsg);
+	visor->process(imgMsg,poseMsg);
 	pcl_analyse->process(frameMsg);
 }
 
@@ -52,7 +53,7 @@ void rosThreadLoop()
 ///
 /// \brief This void function takes care of handling the different subscribers and is started on startup.
 ///
-/// A set of ROS filters are coupled to obtain time syncronization between the IMU, camera and the pose estimated by lsd-slam.
+/// A set of ROS filters are coupled to obtain time syncronization between the pose, camera and the pose estimated by lsd-slam.
 /// The approximate time sync policy is chosen because there is a difference in frequency between the different topics
 ///
 	printf("Started ROS thread\n");
@@ -66,10 +67,10 @@ void rosThreadLoop()
 	ros::Subscriber graph_sub  = nh.subscribe(nh.resolveName("lsd_slam/graph"),10, graphCb);
 	image_transport::SubscriberFilter image_sub(it, nh.resolveName("image"),1);
 	message_filters::Subscriber<lsd_slam_viewer::keyframeMsg> liveFrames_sub(nh,nh.resolveName("lsd_slam/liveframes"), 1);
-	message_filters::Subscriber<sensor_msgs::Imu> imu_sub(nh,nh.resolveName("/ardrone/imu"),1);
-	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, lsd_slam_viewer::keyframeMsg, sensor_msgs::Imu> MySyncPolicy;
+	message_filters::Subscriber<tum_ardrone::filter_state> pose_sub(nh,nh.resolveName("/ardrone/predictedPose"),1);
+	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, lsd_slam_viewer::keyframeMsg, tum_ardrone::filter_state> MySyncPolicy;
 	//ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
-	message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), image_sub, liveFrames_sub, imu_sub);
+	message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), image_sub, liveFrames_sub, pose_sub);
 	sync.registerCallback(boost::bind(&callback, _1, _2,_3));
 	ROS_INFO("subscribers initialized - going for a spin");
 	ros::spin();

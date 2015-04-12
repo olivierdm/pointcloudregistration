@@ -4,10 +4,11 @@
 Vision::Vision():nh("~"),it(nh)
 {
 	image_lsd = it.advertise("lsd",1);
-	//image_detect = it.advertise("detect",1);
+	image_detect = it.advertise("detect",1);
 	ls = cv::createLineSegmentDetector(cv::LSD_REFINE_STD);
-	//stair_cascade_name = "stair_cascade.xml";
-	//if( !stair_cascade.load( stair_cascade_name ) ){ printf("--(!)Error loading\n");  };
+	stair_cascade_name = "stair_cascade.xml";
+	if( !stair_cascade.load( stair_cascade_name ) )
+		{ROS_WARN_STREAM("Error loading cascade: " << stair_cascade_name);  };
 
 
 	wantExit=false;
@@ -35,6 +36,10 @@ Vision::~Vision()
 }
 void Vision::threadLoop()
 {
+///
+/// \brief This method is started in a different thread and waits for data. Upon reception of new data the methods
+///Vision::getLines() and Vision::detect() are called.
+///
 	ROS_INFO_STREAM("detector constructed");
 	while(true)
 	{
@@ -47,12 +52,14 @@ void Vision::threadLoop()
 		if(wantExit)
 			return;
 		getLines();
-		//detect();
+		detect();
 	}
 }
 void Vision::getLines()
 {
-
+///
+/// \brief Detects lines using the line segment detector implemented in OpenCV.
+///
 	//assigning complete header at once should work to
 	cv_lsd_ptr->header.stamp =cv_input_ptr->header.stamp;
 	cv_lsd_ptr->header.seq =cv_input_ptr->header.seq;
@@ -66,30 +73,32 @@ void Vision::getLines()
 	ROS_INFO_STREAM("detected "<< lines_std.size() << " lines");
 
 	ls->drawSegments(cv_lsd_ptr->image, lines_std);
-	/*for(size_t i=0; i <  lines_std.size() ; i++)
-	{
-		cv::line(cv_lsd_ptr->image,cv::Point(lines_std[i][0],lines_std[i][1]),cv::Point(lines_std[i][2],lines_std[i][3]),cv::Scalar(0,0,255));
-}*/
+
 	cv::imwrite("/home/rosuser/Downloads/lines.png",cv_lsd_ptr->image);
 	image_lsd.publish(cv_lsd_ptr->toImageMsg());
 }
-/*void Vision::detect()
+void Vision::detect()
 {
+///
+/// \brief Detect stairs using a cascade classifier.
+///
+
 	std::vector<cv::Rect> stairs;
 	cv::equalizeHist( InputGray, InputGray );
-
-  //-- Detect faces
-	stair_cascade.detectMultiScale(  InputGray , stairs, 1.1, 2, 0|CV_HAAR_SCALE_IMAGE, cv::Size(40, 40) );
-
-  for( size_t i = 0; i < stairs.size(); i++ )
-  {
-	cv::rectangle(cv_input_ptr->image, stairs[i], cv::Scalar( 255, 0, 255 ), 4, 8,0);
-  }
+	stair_cascade.detectMultiScale(  InputGray , stairs, 1.1, 2, 0|CV_HAAR_SCALE_IMAGE, cv::Size(45, 75) );
+	// draw rectangles on the output image
+	for( size_t i = 0; i < stairs.size(); i++ )
+	{
+		cv::rectangle(cv_input_ptr->image, stairs[i], cv::Scalar( 255, 0, 255 ), 4, 8,0);
+	}
 	image_detect.publish(cv_input_ptr->toImageMsg());
-}*/
-void Vision::process(const sensor_msgs::ImageConstPtr& msg)
+}
+void Vision::process(const sensor_msgs::ImageConstPtr& msg, const tum_ardrone::filter_stateConstPtr& pose)
 {
-	//accept the new data
+///
+/// \brief  Accepts the data of an image and copies the neccesary data to the adequate private variables.
+/// @param[in] msg an image
+/// 
 	{
 		boost::mutex::scoped_lock lock(imageMutex);
 	//copy the msg to a cv::Mat instance
@@ -110,6 +119,9 @@ void Vision::process(const sensor_msgs::ImageConstPtr& msg)
 }
 bool Vision::ready()
 {
+///
+/// \brief Checks if the imageMutex is still locked and thus the worker thread still occupied with the previous task.
+///
 	boost::mutex::scoped_lock lock(imageMutex, boost::try_to_lock);
 	if(lock)
 	{
