@@ -1,5 +1,3 @@
-
-
 #include "pointcloudregistration/KeyFrameGraph.h"
 #include "pointcloudregistration/KeyFrame.h"
 #include "ros/package.h"
@@ -46,7 +44,7 @@ bool KeyFrameGraph::PCLUpdate()
 	cloudUpdate=false;
 	return tmp;
 }
-sensor_msgs::PointCloud2::Ptr KeyFrameGraph::addMsg(lsd_slam_viewer::keyframeMsgConstPtr msg)
+void KeyFrameGraph::addMsg(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
 /** 
 \brief Adds a new keyframe to the graph and returns a ros message
@@ -66,8 +64,6 @@ sensor_msgs::PointCloud2::Ptr KeyFrameGraph::addMsg(lsd_slam_viewer::keyframeMsg
 	keyframesByID[msg->id]->setFrom(msg);
 	}
 	cloudUpdate=true;
-	sensor_msgs::PointCloud2::Ptr ros_msg = keyframesByID[msg->id]->getROSMsg();
-	return ros_msg;
 }
 
 void KeyFrameGraph::addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)

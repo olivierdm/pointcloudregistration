@@ -6,9 +6,8 @@
 #include <pcl/common/transforms.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <iostream>
-PCL_registration::PCL_registration(KeyFrameGraph* keyGraph):  graph(keyGraph), nh("~"), wantExit(false)
+PCL_registration::PCL_registration(KeyFrameGraph* keyGraph):  graph(keyGraph), wantExit(false)
 {
-	pub = nh.advertise<sensor_msgs::PointCloud2> ("points2", 1);
 	visualiser = boost::thread(boost::bind(&PCL_registration::visualiserThread,this));
 	ROS_INFO("registration ready");
      //ctor
@@ -31,8 +30,7 @@ PCL_registration::~PCL_registration()
 void PCL_registration::addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
 	meddleMutex.lock();
-		sensor_msgs::PointCloud2::Ptr points = graph->addMsg(msg);
-		pub.publish(points);
+	graph->addMsg(msg);
 	meddleMutex.unlock();
 }
 void PCL_registration::addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)

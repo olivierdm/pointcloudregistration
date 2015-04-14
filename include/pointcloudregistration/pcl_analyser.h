@@ -23,10 +23,11 @@ class PCL_analyser
 	//void release();
     protected:
     private:
-	ros::NodeHandle nh;
-	image_transport::ImageTransport it,it2;
-	image_transport::Publisher pub,pub2;
     	PointCloud::Ptr cloud, depth;
+	ros::NodeHandle nh;
+	KeyFrameGraph* graph;
+	image_transport::ImageTransport it;
+	image_transport::Publisher pub_depth,pub_curv,pub_K,pub_H;
 	boost::condition_variable newData,openCVdisplaySignal;
 	boost::thread worker;
 	boost::mutex frameMutex,cloudMtx;
@@ -42,7 +43,6 @@ class PCL_analyser
 	void writeHist(float,float,int,cv::UMat);
 	std::vector<KeyFrame*> keyframes;
 	std_msgs::Header header;
-	KeyFrameGraph* graph;
 	Eigen::Matrix4f soph;
 	int my_scaleDepthImage;
 	cv::Mat depthImg;

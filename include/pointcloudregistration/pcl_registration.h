@@ -20,8 +20,6 @@ class PCL_registration
 
     protected:
     private:
-	ros::NodeHandle nh;
-	ros::Publisher pub;
 	boost::mutex meddleMutex;
 	KeyFrameGraph* graph;
 	std::map<int, PointCloud::Ptr> cloudsByID;

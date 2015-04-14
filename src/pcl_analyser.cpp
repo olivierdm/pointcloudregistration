@@ -23,18 +23,19 @@ struct framedist{
 		dist=(camcenterlive-camcenter).squaredNorm();
 		
 	}
-
-	Eigen::Vector4f camcenter,camcenterlive;
 	KeyFrame* frame;
+	Eigen::Vector4f camcenter,camcenterlive;
 	float dist;
 	Eigen::Matrix4f soph;
 	bool operator<(const framedist& rhs) const
 		{return dist < rhs.dist;}
 };
-PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): depth(new PointCloud), cloud (new PointCloud), nh("~"),it(nh),it2(nh),graph(keyGraph)
+PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud), nh("~"),graph(keyGraph),it(nh)
 {
-	pub = it.advertise("depth",1);
-	pub2 = it2.advertise("curvature",1);
+	pub_depth = it.advertise("depth",1);
+	pub_curv = it.advertise("curvature",1);
+	pub_K = it.advertise("K",1);
+	pub_H = it.advertise("H",1);
 	wantExit=false;
 	data_ready=false;
 	//create thread
@@ -53,16 +54,7 @@ PCL_analyser::~PCL_analyser()
 	worker.join();
 	//dtor
 }
-/*
-PointCloud::Ptr PCL_analyser::getCloud()
-{
-	cloudMtx.lock();
-	return cloud;
-}*/
-/*void PCL_analyser::release()
-{
-	cloudMtx.unlock();
-}*/
+
 void PCL_analyser::getDepthImage()
 {
 ///
@@ -73,7 +65,7 @@ void PCL_analyser::getDepthImage()
 /// to get a depth image that corresponds with the image captured by camera.
 ///
 	std::vector<KeyFrame*> keyframes = graph->getFrames();
-	int x,y,num(0);
+	int x,y;
 	boost::mutex::scoped_lock lock(cloudMtx);
 	cloud->clear();
 	depthImg.setTo(maxZ);
@@ -113,28 +105,16 @@ void PCL_analyser::getDepthImage()
 
 		if(x<0 || x >= width||y<0||y >= height)
 			continue;
-		num++;
 		depthImg.at<float>(y,x)=std::min(depthImg.at<float>(y,x),it->z);
     	}
-
-	double minVal,maxVal;
-/*
-	cv::Mat output;
-	depthImg.convertTo(output,CV_16UC1,65535/maxZ);
-	std::vector<int> params;
-	params.push_back(CV_IMWRITE_PNG_COMPRESSION);
-	params.push_back(0);
-	cv::imwrite("/home/rosuser/Downloads/depth/"+ boost::to_string(header.seq) +".png",output,params);*/
-	cv::minMaxLoc(depthImg, &minVal, &maxVal);
+	if (!pub_depth.getNumSubscribers())
+		return;
 	cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
-	cv::Mat colored;
-	depthImg.convertTo(colored,CV_8UC1,255.0/maxZ);
-	applyColorMap(colored,cv_ptr->image, cv::COLORMAP_AUTUMN);
+	depthImg.convertTo(cv_ptr->image,CV_16UC1,1000);
 	cv_ptr->header.stamp=header.stamp;
-	cv_ptr->encoding="bgr8";
+	cv_ptr->encoding="mono16";
 	msg = cv_ptr->toImageMsg();
-	ROS_INFO_STREAM("sending message, "<< num << " points: , total pixs: "<< cloud->width << " min: "<< minVal << " max: "<< maxVal);
-	pub.publish(msg);
+	pub_depth.publish(msg);
 }
 void PCL_analyser::process(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
@@ -242,6 +222,16 @@ void PCL_analyser::calcCurvature()
 	//hxx*hyy-hxy^2
 	cv::subtract(hxx.mul(hyy),hxy.mul(hxy),Knom);
 	cv::divide(Knom,Kden,K);
+
+	//publish K
+	if (pub_K.getNumSubscribers() != 0)
+	{
+	cv_bridge::CvImagePtr K_ptr(new cv_bridge::CvImage);
+	K.convertTo(K_ptr->image,CV_16UC1,1000.0);
+	K_ptr->header.stamp=header.stamp;
+	K_ptr->encoding="mono16";
+	pub_K.publish(K_ptr->toImageMsg());
+	}
 //////// calculate H
 	//1+hx^2
 	cv::add(1.0,hx2,Hnom1);
@@ -254,7 +244,17 @@ void PCL_analyser::calcCurvature()
 	//(1+hx^2)*hyy+2*hx*hy*hxy + (1+hy^2)*hxx
 	cv::add(Hnom1.clone(),Hnom3.mul(hxx),Hnom1);
 	cv::divide(Hnom1,Hden,H);
-	cv::multiply(0.5,H,H);
+	cv::multiply(0.5,H.clone(),H);
+
+	//publish H
+	if (pub_H.getNumSubscribers() != 0)
+	{
+	cv_bridge::CvImagePtr H_ptr(new cv_bridge::CvImage);
+	H.convertTo(H_ptr->image,CV_16UC1,1000.0);
+	H_ptr->header.stamp=header.stamp;
+	H_ptr->encoding="mono16";
+	pub_H.publish(H_ptr->toImageMsg());
+	}
 //////// calculate CI
 	cv::compare(K,0.0,mask32,cv::CMP_GE);
 	cv::pow(H.clone(),2,H);
@@ -264,29 +264,24 @@ void PCL_analyser::calcCurvature()
 	double eps=1.0;
 	//H-eps
 	cv::subtract(H,eps,CIden);
-	//cv::imwrite("/home/rosuser/Downloads/mask1.png",mask32);
 	cv::bitwise_not(mask32,mask32);
-	//cv::imwrite("/home/rosuser/Downloads/mask2.png",mask32);
 	//H-eps-K
 	cv::subtract(CIden.clone(),K,CIden,mask32);
 	cv::divide(CInom,CIden,CI);
-	ROS_INFO("Sending curvature");
-	cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
-	double minVal,maxVal;
-	cv::minMaxLoc(CI, &minVal, &maxVal);
 	//writeHist(-0.1f,1.1f,48,CI);
 	cv::compare(CI,0.0,mask32,cv::CMP_LT);
 	CI.setTo(0.0,mask32);
 	cv::compare(CI,1.0,mask32,cv::CMP_GT);
 	CI.setTo(1.0,mask32);
-	CI.convertTo(cv_ptr->image,CV_8UC1,255.0);
-	applyColorMap(cv_ptr->image,cv_ptr->image, cv::COLORMAP_AUTUMN);
-	//cv::imwrite("/home/rosuser/Downloads/K.png",K);
-	//cv::imwrite("/home/rosuser/Downloads/H.png",H);
-	cv_ptr->header.stamp=header.stamp;
-	cv_ptr->encoding="bgr8";
-	msg = cv_ptr->toImageMsg();
-	pub2.publish(msg);
+	//publish curvature
+	if (pub_curv.getNumSubscribers() != 0)
+	{
+	cv_bridge::CvImagePtr CI_ptr(new cv_bridge::CvImage);
+	CI.convertTo(CI_ptr->image,CV_16UC1,1000.0);
+	CI_ptr->header.stamp=header.stamp;
+	CI_ptr->encoding="mono16";
+	pub_curv.publish(CI_ptr->toImageMsg());
+	}
 }
 void PCL_analyser::writeHist(float min, float max, int bins,cv::UMat CI)
 {

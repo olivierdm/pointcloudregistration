@@ -1,5 +1,6 @@
 #include "pointcloudregistration/vision.h"
 #include <opencv2/opencv.hpp>
+#include <math.h>       /* tan */
 
 Vision::Vision():nh("~"),it(nh)
 {
@@ -73,6 +74,9 @@ void Vision::getLines()
 	ROS_INFO_STREAM("detected "<< lines_std.size() << " lines");
 
 	ls->drawSegments(cv_lsd_ptr->image, lines_std);
+	//cv::Mat rot =  cv::getRotationMatrix2D(Point2f(static_cast<float>(cv_input_ptr->image.rows)/2.0f, static_cast<float>(cv_input_ptr->image.cols)/2.0f),pose.roll, 1.0);
+	float y =(cv_input_ptr->image.cols)/2.0f*tan(pose->roll);
+	cv::line(cv_lsd_ptr->image,cv::Point2f(0.0f,y),cv::Point2f(0.0f,-y),cv::Scalar(255,0,0));
 
 	cv::imwrite("/home/rosuser/Downloads/lines.png",cv_lsd_ptr->image);
 	image_lsd.publish(cv_lsd_ptr->toImageMsg());
@@ -93,7 +97,7 @@ void Vision::detect()
 	}
 	image_detect.publish(cv_input_ptr->toImageMsg());
 }
-void Vision::process(const sensor_msgs::ImageConstPtr& msg, const tum_ardrone::filter_stateConstPtr& pose)
+void Vision::process(const sensor_msgs::ImageConstPtr& msg, const tum_ardrone::filter_stateConstPtr& poseMsg)
 {
 ///
 /// \brief  Accepts the data of an image and copies the neccesary data to the adequate private variables.
@@ -105,6 +109,7 @@ void Vision::process(const sensor_msgs::ImageConstPtr& msg, const tum_ardrone::f
 	try
 	{
 		cv_input_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+		pose=poseMsg;
 		data_ready=true;
 	}
 	catch (cv_bridge::Exception& e)

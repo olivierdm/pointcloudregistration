@@ -36,6 +36,7 @@ class Vision
 	void detect();
 	boost::condition_variable newData;
 	void threadLoop();
+	tum_ardrone::filter_stateConstPtr pose;
 };
 
 #endif // PCL_registration_H

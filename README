@@ -1,3 +1,11 @@
 # 1. Quickstart / Minimal Setup
 rosrun graph2pcl key2pcl keyframes:=/lsd_slam/keyframes camera_info:=/camera_info
 
+
+snippert for saving files in full depth
+	cv::Mat output;
+	depthImg.convertTo(output,CV_16UC1,65535/maxZ);
+	std::vector<int> params;
+	params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+	params.push_back(0);
+	cv::imwrite("/home/rosuser/Downloads/depth/"+ boost::to_string(header.seq) +".png",output,params);*/
