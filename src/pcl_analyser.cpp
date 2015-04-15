@@ -6,7 +6,6 @@
 #include <pcl/common/transforms.h>
 #include <sophus/se3.hpp>
 #include <algorithm>
-#include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
 #include "opencv2/core/utility.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
@@ -30,7 +29,7 @@ struct framedist{
 	bool operator<(const framedist& rhs) const
 		{return dist < rhs.dist;}
 };
-PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud), nh("~"),graph(keyGraph),it(nh)
+PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud), nh("~"),graph(keyGraph),it(nh),cv_depth_ptr(new cv_bridge::CvImage),cv_H_ptr(new cv_bridge::CvImage), cv_K_ptr(new cv_bridge::CvImage), cv_CI_ptr(new cv_bridge::CvImage)
 {
 	pub_depth = it.advertise("depth",1);
 	pub_curv = it.advertise("curvature",1);
@@ -38,6 +37,18 @@ PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), dep
 	pub_H = it.advertise("H",1);
 	wantExit=false;
 	data_ready=false;
+	//initiate depth image
+	cv_depth_ptr->encoding="mono16";
+	cv_depth_ptr->header.frame_id="depth_image";
+	//initiate H image
+	cv_H_ptr->encoding="mono16";
+	cv_H_ptr->header.frame_id="mean_curvature";
+	//initiate K image
+	cv_K_ptr->encoding="mono16";
+	cv_K_ptr->header.frame_id="gaussian_curvature";
+	//initiate curvature image
+	cv_CI_ptr->encoding="mono16";
+	cv_CI_ptr->header.frame_id="curvature";
 	//create thread
 	worker = boost::thread(boost::bind(&PCL_analyser::threadLoop,this));
 
@@ -109,12 +120,9 @@ void PCL_analyser::getDepthImage()
     	}
 	if (!pub_depth.getNumSubscribers())
 		return;
-	cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
-	depthImg.convertTo(cv_ptr->image,CV_16UC1,1000);
-	cv_ptr->header.stamp=header.stamp;
-	cv_ptr->encoding="mono16";
-	msg = cv_ptr->toImageMsg();
-	pub_depth.publish(msg);
+	depthImg.convertTo(cv_depth_ptr->image,CV_16UC1,1000);
+	cv_depth_ptr->header.stamp=header.stamp;
+	pub_depth.publish(cv_depth_ptr->toImageMsg());
 }
 void PCL_analyser::process(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
@@ -170,11 +178,11 @@ void PCL_analyser::filterDepth()
 /// \brief applies required filtering and resizes the image back to the original size.
 /// Applies first median filter to remove outliers and afterwards region growing to file the holes. Gaussian smoothing is applied to make the derivatis stable.
 ///
-	cv::UMat filt_f=depthImg.getUMat(cv::ACCESS_READ);
-	cv::medianBlur(filt_f.clone(),filt_f,4);
+	cv::Mat filt_f;
+	cv::medianBlur(depthImg,filt_f,5);
 	filt_f.convertTo(filt,CV_64F);
 	cv::Mat structElm = cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(7,7),cv::Point(-1,-1));
-	cv::erode(depthImg.getUMat(cv::ACCESS_READ), filt,structElm,cv::Point(-1,-1),1);
+	cv::erode(filt_f.getUMat(cv::ACCESS_READ), filt,structElm,cv::Point(-1,-1),1);
 	cv::resize(filt,filt,cv::Size(0,0),1.0f/my_scaleDepthImage,1.0f/my_scaleDepthImage,cv::INTER_AREA);
 	cv::GaussianBlur(filt,filt,cv::Size(5,5),2.0);
 }
@@ -226,11 +234,9 @@ void PCL_analyser::calcCurvature()
 	//publish K
 	if (pub_K.getNumSubscribers() != 0)
 	{
-	cv_bridge::CvImagePtr K_ptr(new cv_bridge::CvImage);
-	K.convertTo(K_ptr->image,CV_16UC1,1000.0);
-	K_ptr->header.stamp=header.stamp;
-	K_ptr->encoding="mono16";
-	pub_K.publish(K_ptr->toImageMsg());
+	K.convertTo(cv_K_ptr->image,CV_16UC1,1000.0);
+	cv_K_ptr->header.stamp=header.stamp;
+	pub_K.publish(cv_K_ptr->toImageMsg());
 	}
 //////// calculate H
 	//1+hx^2
@@ -249,11 +255,9 @@ void PCL_analyser::calcCurvature()
 	//publish H
 	if (pub_H.getNumSubscribers() != 0)
 	{
-	cv_bridge::CvImagePtr H_ptr(new cv_bridge::CvImage);
-	H.convertTo(H_ptr->image,CV_16UC1,1000.0);
-	H_ptr->header.stamp=header.stamp;
-	H_ptr->encoding="mono16";
-	pub_H.publish(H_ptr->toImageMsg());
+	H.convertTo(cv_H_ptr->image,CV_16UC1,1000.0);
+	cv_H_ptr->header.stamp=header.stamp;
+	pub_H.publish(cv_H_ptr->toImageMsg());
 	}
 //////// calculate CI
 	cv::compare(K,0.0,mask32,cv::CMP_GE);
@@ -276,11 +280,9 @@ void PCL_analyser::calcCurvature()
 	//publish curvature
 	if (pub_curv.getNumSubscribers() != 0)
 	{
-	cv_bridge::CvImagePtr CI_ptr(new cv_bridge::CvImage);
-	CI.convertTo(CI_ptr->image,CV_16UC1,1000.0);
-	CI_ptr->header.stamp=header.stamp;
-	CI_ptr->encoding="mono16";
-	pub_curv.publish(CI_ptr->toImageMsg());
+	CI.convertTo(cv_CI_ptr->image,CV_16UC1,100.0);
+	cv_CI_ptr->header.stamp=header.stamp;
+	pub_curv.publish(cv_CI_ptr->toImageMsg());
 	}
 }
 void PCL_analyser::writeHist(float min, float max, int bins,cv::UMat CI)

@@ -11,6 +11,7 @@
 #include "pcl/point_types.h"
 #include <boost/thread.hpp>
 #include "pointcloudregistration/datastructures.h"
+#include <cv_bridge/cv_bridge.h>
 class KeyFrameGraph;
 class PCL_analyser
 {
@@ -19,8 +20,6 @@ class PCL_analyser
         virtual ~PCL_analyser();
 	void process(lsd_slam_viewer::keyframeMsgConstPtr);
 	bool ready();
-	//PointCloud::Ptr getCloud();
-	//void release();
     protected:
     private:
     	PointCloud::Ptr cloud, depth;
@@ -34,6 +33,7 @@ class PCL_analyser
 	Sophus::Sim3f camToWorld;
 	void calcCurvature();
 	int width, height;
+	cv_bridge::CvImagePtr cv_depth_ptr,cv_H_ptr,cv_K_ptr,cv_CI_ptr;
 	bool wantExit,data_ready;
 	//camera parameters
 	float fx,fy,cx,cy;

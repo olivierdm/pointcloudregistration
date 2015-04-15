@@ -21,9 +21,8 @@ class Vision
 	cv::CascadeClassifier stair_cascade;
 	ros::NodeHandle nh;
 	image_transport::ImageTransport it;
-	image_transport::Publisher image_lsd;
-	image_transport::Publisher image_detect;
-        cv::Ptr<cv::LineSegmentDetector> ls;
+	image_transport::Publisher pub_lsd, pub_detect;
+	cv::Ptr<cv::LineSegmentDetector> ls;
 	cv_bridge::CvImagePtr cv_input_ptr,cv_lsd_ptr;
 	bool wantExit,data_ready;
 	cv::Mat InputGray;
