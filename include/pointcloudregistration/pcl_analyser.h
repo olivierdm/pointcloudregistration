@@ -26,14 +26,14 @@ class PCL_analyser
 	ros::NodeHandle nh;
 	KeyFrameGraph* graph;
 	image_transport::ImageTransport it;
-	image_transport::Publisher pub_depth,pub_curv,pub_K,pub_H;
+	image_transport::Publisher pub_depth,pub_depthf,pub_curv,pub_K,pub_H;
 	boost::condition_variable newData,openCVdisplaySignal;
 	boost::thread worker;
 	boost::mutex frameMutex,cloudMtx;
 	Sophus::Sim3f camToWorld;
 	void calcCurvature();
 	int width, height;
-	cv_bridge::CvImagePtr cv_depth_ptr,cv_H_ptr,cv_K_ptr,cv_CI_ptr;
+	cv_bridge::CvImagePtr cv_depth_ptr, cv_depthf_ptr,cv_H_ptr,cv_K_ptr,cv_CI_ptr;
 	bool wantExit,data_ready;
 	//camera parameters
 	float fx,fy,cx,cy;

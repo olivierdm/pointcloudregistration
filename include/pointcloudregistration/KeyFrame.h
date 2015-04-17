@@ -34,8 +34,8 @@ private:
 	float cx; ///< first ordinate of the camera's principal point
 	float cy; ///< second ordinate of th camera's principal point
 	float fxi,fyi,cxi,cyi;
-	int width;///< image height
-	int height;///< image width
+	int width;///< image width
+	int height;///< image height
 	void refreshPCL();
 	boost::mutex cloudMutex;
 

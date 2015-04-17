@@ -64,16 +64,31 @@ void Vision::getLines()
 	cv::cvtColor(cv_input_ptr->image,InputGray,cv::COLOR_BGR2GRAY);
 	//detect using lsd
 	ls->detect(InputGray, lines_std);
+	double maxAngle = 8.0;
+	float maxtan = std::tan(static_cast<float>(maxAngle)/180.0f * CV_PI);
+	std::vector<cv::Vec4f> good_lines, bad_lines;
+	for(size_t i= 0; i < lines_std.size();i++)
+	{
+		if(abs((lines_std[i][3] - lines_std[i][1])/(lines_std[i][2]-lines_std[i][0]))<maxtan){
+		good_lines.push_back(lines_std[i]);
+		}else{
+			bad_lines.push_back(lines_std[i]);
+		}
+	}
 	if (pub_lsd.getNumSubscribers() != 0)
 	{
-	ls->drawSegments(cv_lsd_ptr->image, lines_std);
-	pub_lsd.publish(cv_lsd_ptr->toImageMsg());
+		float y =(cv_input_ptr->image.cols)/2.0f*tan(pose->roll/180.0*CV_PI);
+		float y1= static_cast<float> (cv_lsd_ptr->image.rows) / 2.0f + y;
+		float y2= static_cast<float> (cv_lsd_ptr->image.rows) / 2.0f - y;
+		ls->drawSegments(cv_lsd_ptr->image,bad_lines);
+		cv::line(cv_lsd_ptr->image,cv::Point2f(0.0f,y1),cv::Point2f(static_cast<float>(cv_lsd_ptr->image.cols),y2),cv::Scalar(255,0,0));
+		cv::Scalar color(0,255,0);
+		for(size_t i=0 ; i < good_lines.size();i++)
+		{
+			cv::line(cv_lsd_ptr->image,cv::Point2f(good_lines[i][0],good_lines[i][1]),cv::Point2f(good_lines[i][2],good_lines[i][3]),color);
+		}
+		pub_lsd.publish(cv_lsd_ptr->toImageMsg());
 	}
-
-	
-	float y =(cv_input_ptr->image.cols)/2.0f*tan(pose->roll);
-	cv::line(cv_lsd_ptr->image,cv::Point2f(0.0f,y),cv::Point2f(0.0f,-y),cv::Scalar(255,0,0));
-
 }
 void Vision::detect()
 {

@@ -9,7 +9,6 @@
 #include <opencv2/opencv.hpp>
 #include "opencv2/core/utility.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/highgui/highgui.hpp>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -29,9 +28,10 @@ struct framedist{
 	bool operator<(const framedist& rhs) const
 		{return dist < rhs.dist;}
 };
-PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud), nh("~"),graph(keyGraph),it(nh),cv_depth_ptr(new cv_bridge::CvImage),cv_H_ptr(new cv_bridge::CvImage), cv_K_ptr(new cv_bridge::CvImage), cv_CI_ptr(new cv_bridge::CvImage)
+PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud), nh("~"),graph(keyGraph),it(nh),cv_depth_ptr(new cv_bridge::CvImage),cv_depthf_ptr(new cv_bridge::CvImage),cv_H_ptr(new cv_bridge::CvImage), cv_K_ptr(new cv_bridge::CvImage), cv_CI_ptr(new cv_bridge::CvImage)
 {
 	pub_depth = it.advertise("depth",1);
+	pub_depthf = it.advertise("depth_filtered",1);
 	pub_curv = it.advertise("curvature",1);
 	pub_K = it.advertise("K",1);
 	pub_H = it.advertise("H",1);
@@ -39,7 +39,10 @@ PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), dep
 	data_ready=false;
 	//initiate depth image
 	cv_depth_ptr->encoding="mono16";
-	cv_depth_ptr->header.frame_id="depth_image";
+	cv_depth_ptr->header.frame_id="ardrone_base_frontcam";
+	//initiate filtered depth image
+	cv_depthf_ptr->encoding="mono16";
+	cv_depthf_ptr->header.frame_id="ardrone_base_frontcam";
 	//initiate H image
 	cv_H_ptr->encoding="mono16";
 	cv_H_ptr->header.frame_id="mean_curvature";
@@ -178,13 +181,16 @@ void PCL_analyser::filterDepth()
 /// \brief applies required filtering and resizes the image back to the original size.
 /// Applies first median filter to remove outliers and afterwards region growing to file the holes. Gaussian smoothing is applied to make the derivatis stable.
 ///
-	cv::Mat filt_f;
-	cv::medianBlur(depthImg,filt_f,5);
-	filt_f.convertTo(filt,CV_64F);
 	cv::Mat structElm = cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(7,7),cv::Point(-1,-1));
-	cv::erode(filt_f.getUMat(cv::ACCESS_READ), filt,structElm,cv::Point(-1,-1),1);
-	cv::resize(filt,filt,cv::Size(0,0),1.0f/my_scaleDepthImage,1.0f/my_scaleDepthImage,cv::INTER_AREA);
-	cv::GaussianBlur(filt,filt,cv::Size(5,5),2.0);
+	cv::erode(depthImg.getUMat(cv::ACCESS_READ), filt,structElm,cv::Point(-1,-1),1);
+	cv::resize(filt.clone(),filt,cv::Size(0,0),1.0f/my_scaleDepthImage,1.0f/my_scaleDepthImage,cv::INTER_AREA);
+	cv::GaussianBlur(filt.clone(),filt,cv::Size(5,5),5.0);
+
+	if (!pub_depthf.getNumSubscribers())
+		return;
+	filt.convertTo(cv_depthf_ptr->image,CV_16UC1,1000);
+	cv_depthf_ptr->header.stamp=header.stamp;
+	pub_depthf.publish(cv_depthf_ptr->toImageMsg());
 }
 void PCL_analyser::calcCurvature()
 {
@@ -272,7 +278,7 @@ void PCL_analyser::calcCurvature()
 	//H-eps-K
 	cv::subtract(CIden.clone(),K,CIden,mask32);
 	cv::divide(CInom,CIden,CI);
-	//writeHist(-0.1f,1.1f,48,CI);
+	writeHist(-20.0f,10.0f,48,CI);
 	cv::compare(CI,0.0,mask32,cv::CMP_LT);
 	CI.setTo(0.0,mask32);
 	cv::compare(CI,1.0,mask32,cv::CMP_GT);

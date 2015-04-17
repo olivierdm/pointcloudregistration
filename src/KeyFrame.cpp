@@ -7,7 +7,7 @@ This class is used to store the received keyframes and their attributes.
 #include <pcl/common/transforms.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 
-KeyFrame::KeyFrame(): cloud (new PointCloud), height(0),width(0), my_scaledTH(0.0f), my_absTH(0.0f) , originalInput(0)
+KeyFrame::KeyFrame(): width(0), height(0), my_scaledTH(0.0f), my_absTH(0.0f) , cloud (new PointCloud), originalInput(0)
 {
 /// 
 /// \brief Default constructor, solely used to initialize private members.
@@ -149,13 +149,13 @@ void KeyFrame::refreshPCL()
             point.x=(x*fxi + cxi)*depth;
             point.y=(y*fyi + cyi)*depth;
             point.z=depth;
-		unfiltered->push_back(point);
+		cloud->push_back(point);
         }
-  pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+  /*pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
   sor.setInputCloud (unfiltered);
-  sor.setMeanK (50);
-  sor.setStddevMulThresh (1.0);
-  sor.filter (*cloud);
+  sor.setMeanK (10);
+  sor.setStddevMulThresh (2.0);
+  sor.filter (*cloud);*/
 	Mdepth/=cloud->width;
        ROS_INFO_STREAM("cloud "<< id << ": error 1: "<< err1 << " error 2: "<< err2 << " error 3: " << err3 << " number of points: " << cloud->width << " Mean depth: "<< Mdepth);
 }
