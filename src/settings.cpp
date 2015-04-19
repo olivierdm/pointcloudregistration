@@ -14,7 +14,10 @@ float scaleDepthImage = 5.0f;
 // new:
 float pointTesselation = 1;
 float lineTesselation = 2;
-
+float struct_x=3;
+float struct_y=2;
+float gauss_sigma=2.0f;
+int gauss_size=5;
 bool keepInMemory=true;
 bool showKFCameras = true;
 bool showKFPointclouds = true;

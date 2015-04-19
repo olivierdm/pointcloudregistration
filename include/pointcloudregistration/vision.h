@@ -8,10 +8,11 @@
 #include <opencv2/objdetect/objdetect.hpp>
 #include <boost/thread.hpp>
 #include <tum_ardrone/filter_state.h>
+class LineReg;
 class Vision
 {
     public:
-        Vision();
+        Vision(LineReg*);
         virtual ~Vision();
 	void process(const sensor_msgs::ImageConstPtr&,const tum_ardrone::filter_stateConstPtr&);
 	bool ready();
@@ -19,6 +20,7 @@ class Vision
     private:
 	std::string stair_cascade_name;
 	cv::CascadeClassifier stair_cascade;
+	LineReg* stairs;
 	ros::NodeHandle nh;
 	image_transport::ImageTransport it;
 	image_transport::Publisher pub_lsd, pub_detect;
@@ -30,7 +32,6 @@ class Vision
         std::vector<cv::Vec4f> lines_std;
 	boost::mutex imageMutex;
 	boost::thread worker;
-	void process();
 	void getLines();
 	void detect();
 	boost::condition_variable newData;
@@ -38,4 +39,4 @@ class Vision
 	tum_ardrone::filter_stateConstPtr pose;
 };
 
-#endif // PCL_registration_H
+#endif // VISION_H

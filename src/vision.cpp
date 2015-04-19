@@ -2,7 +2,7 @@
 #include <opencv2/opencv.hpp>
 #include <math.h>       /* tan */
 
-Vision::Vision():nh("~"),it(nh),cv_lsd_ptr(new cv_bridge::CvImage)
+Vision::Vision(LineReg* stair): stairs(stair),nh("~"),it(nh),cv_lsd_ptr(new cv_bridge::CvImage)
 {
 	pub_lsd = it.advertise("lsd",1);
 	pub_detect = it.advertise("detect",1);
@@ -98,7 +98,7 @@ void Vision::detect()
 //cv::Mat rot =  cv::getRotationMatrix2D(Point2f(static_cast<float>(cv_input_ptr->image.rows)/2.0f, static_cast<float>(cv_input_ptr->image.cols)/2.0f),pose.roll, 1.0);
 	std::vector<cv::Rect> stairs;
 	cv::equalizeHist( InputGray, InputGray );
-	stair_cascade.detectMultiScale(  InputGray , stairs, 1.1, 2, 0|CV_HAAR_SCALE_IMAGE, cv::Size(45, 75) );
+	stair_cascade.detectMultiScale(  InputGray , stairs, 1.1, 0, 0|CV_HAAR_SCALE_IMAGE, cv::Size(90,150 ) );
 	// draw rectangles on the output image
 	if (pub_lsd.getNumSubscribers() != 0)
 	{

@@ -3,9 +3,12 @@
 extern float minZ;
 extern float maxZ;
 extern float scaleDepthImage;
+extern float struct_x;
+extern float struct_y;
 extern float pointTesselation;
 extern float lineTesselation;
-
+extern float gauss_sigma;
+extern int gauss_size;
 extern bool keepInMemory;
 extern bool showKFCameras;
 extern bool showKFPointclouds;

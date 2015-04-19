@@ -20,7 +20,7 @@ cv_bridge)
 find_package(PCL 1.7 REQUIRED)
 find_package(Eigen REQUIRED)
 find_package(OpenCV REQUIRED) 
-find_package(TBB REQUIRED)
+#find_package(TBB REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS thread system)
@@ -113,7 +113,7 @@ link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
 set(HEADER_DIR include/pointcloudregistration)
-set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADER_DIR}/pcl_registration.h ${HEADER_DIR}/settings.h ${HEADER_DIR}/vision.h ${HEADER_DIR}/pcl_analyser.h ${HEADER_DIR}/datastructures.h)
+set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADER_DIR}/pcl_registration.h ${HEADER_DIR}/settings.h ${HEADER_DIR}/vision.h ${HEADER_DIR}/pcl_analyser.h ${HEADER_DIR}/datastructures.h ${HEADER_DIR}/linereg.h)
 
 ## Declare a cpp library
 # add_library(vision
@@ -121,13 +121,13 @@ set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADE
 # )
 
 ## Declare a cpp executable
- add_executable(registrar src/main_registration.cpp src/pcl_registration.cpp src/KeyFrame.cpp src/KeyFrameGraph.cpp src/settings.cpp   src/vision.cpp src/pcl_analyser.cpp ${HEADER_FILES})
+ add_executable(registrar src/main_registration.cpp src/pcl_registration.cpp src/KeyFrame.cpp src/KeyFrameGraph.cpp src/settings.cpp   src/vision.cpp src/pcl_analyser.cpp src/linereg.cpp ${HEADER_FILES})
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(vision_node vision_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
- target_link_libraries(registrar ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS} ${TBB_LIBRARIES})
+ target_link_libraries(registrar ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS} )
 #############
 ## Install ##
 #############

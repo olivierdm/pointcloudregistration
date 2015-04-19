@@ -13,10 +13,11 @@
 #include "pointcloudregistration/datastructures.h"
 #include <cv_bridge/cv_bridge.h>
 class KeyFrameGraph;
+class LineReg;
 class PCL_analyser
 {
     public:
-        PCL_analyser(KeyFrameGraph*);
+        PCL_analyser(KeyFrameGraph*,LineReg*);
         virtual ~PCL_analyser();
 	void process(lsd_slam_viewer::keyframeMsgConstPtr);
 	bool ready();
@@ -25,6 +26,7 @@ class PCL_analyser
     	PointCloud::Ptr cloud, depth;
 	ros::NodeHandle nh;
 	KeyFrameGraph* graph;
+	LineReg* stairs;
 	image_transport::ImageTransport it;
 	image_transport::Publisher pub_depth,pub_depthf,pub_curv,pub_K,pub_H;
 	boost::condition_variable newData,openCVdisplaySignal;

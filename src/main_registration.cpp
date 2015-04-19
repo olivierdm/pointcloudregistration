@@ -12,8 +12,8 @@
 #include "pointcloudregistration/pcl_registration.h"
 #include "pointcloudregistration/pcl_analyser.h"
 #include "pointcloudregistration/vision.h"
+#include "pointcloudregistration/linereg.h"
 #include "pointcloudregistration/settings.h"
-#include "tbb/task_group.h"
 #include <Eigen/Geometry>
 #include <iostream>
 
@@ -21,7 +21,7 @@ PCL_registration* registrar=0;
 PCL_analyser* pcl_analyse=0;
 KeyFrameGraph* graph=0;
 Vision* visor=0;
-tbb::task_group g;
+LineReg* stairs=0;
 bool firstKF=false;
 
 void frameCb(lsd_slam_viewer::keyframeMsgConstPtr msg)
@@ -86,11 +86,12 @@ int main( int argc, char** argv )
 	// start ROS thread
 	ros::init(argc, argv, "registrar");
 	rosThread = boost::thread(rosThreadLoop);
-
-	visor = new Vision();
+	stairs = new LineReg();
+	visor = new Vision(stairs);
 	graph = new KeyFrameGraph();
 	registrar = new PCL_registration(graph);
-	pcl_analyse = new PCL_analyser(graph);
+	pcl_analyse = new PCL_analyser(graph,stairs);
+
 	rosThread.join();
 	std::cout<<"Shutting down ... " << std::endl;
 	ros::shutdown();

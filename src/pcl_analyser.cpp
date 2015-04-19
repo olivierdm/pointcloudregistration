@@ -28,7 +28,7 @@ struct framedist{
 	bool operator<(const framedist& rhs) const
 		{return dist < rhs.dist;}
 };
-PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud), nh("~"),graph(keyGraph),it(nh),cv_depth_ptr(new cv_bridge::CvImage),cv_depthf_ptr(new cv_bridge::CvImage),cv_H_ptr(new cv_bridge::CvImage), cv_K_ptr(new cv_bridge::CvImage), cv_CI_ptr(new cv_bridge::CvImage)
+PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph,LineReg* stair): cloud (new PointCloud), depth(new PointCloud), nh("~"),graph(keyGraph), stairs(stair),it(nh),cv_depth_ptr(new cv_bridge::CvImage),cv_depthf_ptr(new cv_bridge::CvImage),cv_H_ptr(new cv_bridge::CvImage), cv_K_ptr(new cv_bridge::CvImage), cv_CI_ptr(new cv_bridge::CvImage)
 {
 	pub_depth = it.advertise("depth",1);
 	pub_depthf = it.advertise("depth_filtered",1);
@@ -181,10 +181,10 @@ void PCL_analyser::filterDepth()
 /// \brief applies required filtering and resizes the image back to the original size.
 /// Applies first median filter to remove outliers and afterwards region growing to file the holes. Gaussian smoothing is applied to make the derivatis stable.
 ///
-	cv::Mat structElm = cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(7,7),cv::Point(-1,-1));
+	cv::Mat structElm = cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(struct_x*my_scaleDepthImage,struct_y*my_scaleDepthImage),cv::Point(-1,-1));
 	cv::erode(depthImg.getUMat(cv::ACCESS_READ), filt,structElm,cv::Point(-1,-1),1);
 	cv::resize(filt.clone(),filt,cv::Size(0,0),1.0f/my_scaleDepthImage,1.0f/my_scaleDepthImage,cv::INTER_AREA);
-	cv::GaussianBlur(filt.clone(),filt,cv::Size(5,5),5.0);
+	cv::GaussianBlur(filt.clone(),filt,cv::Size(gauss_size,gauss_size),gauss_sigma);
 
 	if (!pub_depthf.getNumSubscribers())
 		return;
@@ -278,7 +278,7 @@ void PCL_analyser::calcCurvature()
 	//H-eps-K
 	cv::subtract(CIden.clone(),K,CIden,mask32);
 	cv::divide(CInom,CIden,CI);
-	writeHist(-20.0f,10.0f,48,CI);
+	//writeHist(-20.0f,10.0f,48,CI);
 	cv::compare(CI,0.0,mask32,cv::CMP_LT);
 	CI.setTo(0.0,mask32);
 	cv::compare(CI,1.0,mask32,cv::CMP_GT);
