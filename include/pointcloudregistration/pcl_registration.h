@@ -17,15 +17,18 @@ class PCL_registration
         virtual ~PCL_registration();
         void addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr);
 	void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
+	void drawPlane(pcl::PointCloud<pcl::PointXYZ>::ConstPtr,Eigen::Affine3f & );
 
     protected:
     private:
-	boost::mutex meddleMutex;
+	boost::mutex meddleMutex,planeMutex;
 	KeyFrameGraph* graph;
 	std::map<int, PointCloud::Ptr> cloudsByID;
+	pcl::PointCloud<pcl::PointXYZ>::Ptr planeCloud;
 	boost::thread visualiser;
 	void visualiserThread();
-	bool wantExit;
+	bool wantExit,newPlane;
+	Eigen::Affine3f campose;
 };
 
 #endif // PCL_registration_H

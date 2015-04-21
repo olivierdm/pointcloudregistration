@@ -1,7 +1,7 @@
 #include <Eigen/Core>
 #include "lsd_slam_viewer/keyframeMsg.h"
 #include "sophus/sim3.hpp"
-#include "pcl_conversions/pcl_conversions.h"
+#include "pcl/common/common.h"
 #include "boost/thread.hpp"
 #include "pointcloudregistration/datastructures.h"
 
@@ -19,7 +19,7 @@ public:
 
 
 	void setFrom(lsd_slam_viewer::keyframeMsgConstPtr msg);
-	sensor_msgs::PointCloud2::Ptr getROSMsg();
+	//sensor_msgs::PointCloud2::Ptr getROSMsg();
 	PointCloud::Ptr getPCL();
 	int id;
 	double time;

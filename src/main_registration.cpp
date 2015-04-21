@@ -86,10 +86,10 @@ int main( int argc, char** argv )
 	// start ROS thread
 	ros::init(argc, argv, "registrar");
 	rosThread = boost::thread(rosThreadLoop);
-	stairs = new LineReg();
-	visor = new Vision(stairs);
 	graph = new KeyFrameGraph();
 	registrar = new PCL_registration(graph);
+	stairs = new LineReg(registrar);
+	visor = new Vision(stairs);
 	pcl_analyse = new PCL_analyser(graph,stairs);
 
 	rosThread.join();

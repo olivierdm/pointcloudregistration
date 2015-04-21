@@ -1,12 +1,13 @@
 #include "pointcloudregistration/vision.h"
 #include <opencv2/opencv.hpp>
+#include "pointcloudregistration/linereg.h"
 #include <math.h>       /* tan */
 
-Vision::Vision(LineReg* stair): stairs(stair),nh("~"),it(nh),cv_lsd_ptr(new cv_bridge::CvImage)
+Vision::Vision(LineReg* stair): stairs(stair),nh("~"),it(nh),cv_lsd_ptr(new cv_bridge::CvImage),cv_det_ptr(new cv_bridge::CvImage)
 {
 	pub_lsd = it.advertise("lsd",1);
 	pub_detect = it.advertise("detect",1);
-	ls = cv::createLineSegmentDetector(cv::LSD_REFINE_STD);
+	ls = cv::createLineSegmentDetector(cv::LSD_REFINE_ADV);
 	stair_cascade_name = "stair_cascade.xml";
 	if( !stair_cascade.load( stair_cascade_name ) )
 		{ROS_WARN_STREAM("Error loading cascade: " << stair_cascade_name);  };
@@ -15,6 +16,7 @@ Vision::Vision(LineReg* stair): stairs(stair),nh("~"),it(nh),cv_lsd_ptr(new cv_b
 	//initiate lsd image
 	cv_lsd_ptr->encoding="bgr8";
 	cv_lsd_ptr->header.frame_id="line_segment";
+	cv_det_ptr->encoding="bgr8";
 	//start worker
 	worker = boost::thread(boost::bind(&Vision::threadLoop,this));
 }
@@ -51,6 +53,7 @@ void Vision::threadLoop()
 			return;
 		getLines();
 		detect();
+		stairs->process(rectangles,good_lines, quality,cv_input_ptr->image.clone());
 	}
 }
 void Vision::getLines()
@@ -62,15 +65,18 @@ void Vision::getLines()
 	//convert to grayscale
 	cv_lsd_ptr->image=cv_input_ptr->image.clone();
 	cv::cvtColor(cv_input_ptr->image,InputGray,cv::COLOR_BGR2GRAY);
+	good_lines.clear();
+	std::vector<cv::Vec4f> lines_std, bad_lines;
+	std::vector<float> quality_std;
 	//detect using lsd
-	ls->detect(InputGray, lines_std);
+	ls->detect(InputGray, lines_std,cv::noArray(),cv::noArray(),quality_std);
 	double maxAngle = 8.0;
 	float maxtan = std::tan(static_cast<float>(maxAngle)/180.0f * CV_PI);
-	std::vector<cv::Vec4f> good_lines, bad_lines;
 	for(size_t i= 0; i < lines_std.size();i++)
 	{
 		if(abs((lines_std[i][3] - lines_std[i][1])/(lines_std[i][2]-lines_std[i][0]))<maxtan){
 		good_lines.push_back(lines_std[i]);
+		quality.push_back(quality_std[i]);
 		}else{
 			bad_lines.push_back(lines_std[i]);
 		}
@@ -96,17 +102,19 @@ void Vision::detect()
 /// \brief Detect stairs using a cascade classifier.
 ///
 //cv::Mat rot =  cv::getRotationMatrix2D(Point2f(static_cast<float>(cv_input_ptr->image.rows)/2.0f, static_cast<float>(cv_input_ptr->image.cols)/2.0f),pose.roll, 1.0);
-	std::vector<cv::Rect> stairs;
+	cv_det_ptr->header =cv_input_ptr->header;
+	cv_det_ptr->image=cv_input_ptr->image.clone();
 	cv::equalizeHist( InputGray, InputGray );
-	stair_cascade.detectMultiScale(  InputGray , stairs, 1.1, 0, 0|CV_HAAR_SCALE_IMAGE, cv::Size(90,150 ) );
+	stair_cascade.detectMultiScale(  InputGray , rectangles, 1.1, 1, 0|CV_HAAR_SCALE_IMAGE, cv::Size(90,150 ) );
 	// draw rectangles on the output image
-	if (pub_lsd.getNumSubscribers() != 0)
+	if (pub_detect.getNumSubscribers() != 0)
 	{
-	for( size_t i = 0; i < stairs.size(); i++ )
+	ROS_INFO("trying to publish");
+	for( size_t i = 0; i < rectangles.size(); i++ )
 	{
-		cv::rectangle(cv_input_ptr->image, stairs[i], cv::Scalar( 255, 0, 255 ), 4, 8,0);
+		cv::rectangle(cv_det_ptr->image, rectangles[i], cv::Scalar( 255, 0, 255 ), 4, 8,0);
 	}
-	pub_detect.publish(cv_input_ptr->toImageMsg());
+	pub_detect.publish(cv_det_ptr->toImageMsg());
 	}
 
 }

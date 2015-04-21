@@ -2,6 +2,7 @@
 /*! 
 This class is used to store the received keyframes and their attributes.
 */
+#include <ros/ros.h>
 #include "pointcloudregistration/KeyFrame.h"
 #include "pointcloudregistration/settings.h"
 #include <pcl/common/transforms.h>
@@ -159,7 +160,7 @@ void KeyFrame::refreshPCL()
 	Mdepth/=cloud->width;
        ROS_INFO_STREAM("cloud "<< id << ": error 1: "<< err1 << " error 2: "<< err2 << " error 3: " << err3 << " number of points: " << cloud->width << " Mean depth: "<< Mdepth);
 }
-sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg()
+/*sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg()
 {
 ///
 /// \brief converts the local pointcloud to a ros compatible message and passes the pointer.
@@ -173,7 +174,7 @@ sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg()
 	pclMsg->header.seq=id;
 	pclMsg->header.stamp=ros::Time(time);
 	return pclMsg;
-}
+}*/
 PointCloud::Ptr KeyFrame::getPCL()
 {
 ///

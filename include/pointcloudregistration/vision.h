@@ -25,11 +25,13 @@ class Vision
 	image_transport::ImageTransport it;
 	image_transport::Publisher pub_lsd, pub_detect;
 	cv::Ptr<cv::LineSegmentDetector> ls;
-	cv_bridge::CvImagePtr cv_input_ptr,cv_lsd_ptr;
+	cv_bridge::CvImagePtr cv_input_ptr,cv_lsd_ptr,cv_det_ptr;
 	bool wantExit,data_ready;
+	std::vector<cv::Rect> rectangles;
 	cv::Mat InputGray;
 	//use std::vector<cv::Vec4i> for older implementations
-        std::vector<cv::Vec4f> lines_std;
+        std::vector<cv::Vec4f> good_lines;
+	std::vector<float> quality;
 	boost::mutex imageMutex;
 	boost::thread worker;
 	void getLines();

@@ -6,7 +6,7 @@
 #include <pcl/common/transforms.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <iostream>
-PCL_registration::PCL_registration(KeyFrameGraph* keyGraph):  graph(keyGraph), wantExit(false)
+PCL_registration::PCL_registration(KeyFrameGraph* keyGraph):  graph(keyGraph), planeCloud(new pcl::PointCloud<pcl::PointXYZ>), wantExit(false),newPlane(false)
 {
 	visualiser = boost::thread(boost::bind(&PCL_registration::visualiserThread,this));
 	ROS_INFO("registration ready");
@@ -59,7 +59,7 @@ while (!wantExit)
 		{
 			trans=keyframes[i]->camToWorld.matrix();
 			std::string id = boost::lexical_cast<std::string>(keyframes[i]->id);
-		ROS_INFO_STREAM("cloud: "<< keyframes[i]->id);
+		ROS_DEBUG_STREAM("cloud: "<< keyframes[i]->id);
 			if(!viewer->updatePointCloudPose(id,trans))
 			{
 			//add cloud if id not recognized
@@ -67,7 +67,7 @@ while (!wantExit)
 			*tmp=*(keyframes[i]->getPCL());
 			cloudsByID[keyframes[i]->id]=tmp;
 			size+=tmp->width;
-			ROS_INFO_STREAM("size viewer: "<< size);
+			ROS_DEBUG_STREAM("size viewer: "<< size);
 	  		//pcl::visualization::PointCloudColorHandlerRGBField<Point> rgb(cloudsByID[keyframes[i]->id]);
 			viewer->addPointCloud(cloudsByID[keyframes[i]->id]/*,rgb*/,id);
 			ROS_DEBUG_STREAM("adding keyframe");
@@ -79,6 +79,16 @@ while (!wantExit)
 			}
 		}
 	}
+	if(newPlane)
+	{
+	boost::mutex::scoped_lock lock(planeMutex);
+	newPlane = false;
+	viewer->removePointCloud("stair");
+	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> stair_color (planeCloud, 230, 20, 20); // Red
+	viewer->addPointCloud (planeCloud, stair_color, "stair");
+	viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2,"stair");
+	viewer->updatePointCloudPose("stair",campose);
+	}
 	viewer->spinOnce (100);
 	boost::this_thread::sleep (boost::posix_time::microseconds (100000));
   }
@@ -86,4 +96,11 @@ while (!wantExit)
 	viewer->spinOnce();
 	viewer->close();
 	viewer.reset();
+}
+void PCL_registration::drawPlane(pcl::PointCloud<pcl::PointXYZ>::ConstPtr plane,Eigen::Affine3f & pose)
+{
+	boost::mutex::scoped_lock lock(planeMutex);
+	*planeCloud=*plane;
+	campose=pose;
+	newPlane =true;
 }

@@ -2,6 +2,8 @@
 #include "pointcloudregistration/KeyFrame.h"
 #include "pointcloudregistration/KeyFrameGraph.h"
 #include "pointcloudregistration/settings.h"
+#include "pointcloudregistration/linereg.h"
+#include <Eigen/Geometry>
 #include "pcl/point_types.h"
 #include <pcl/common/transforms.h>
 #include <sophus/se3.hpp>
@@ -12,6 +14,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <chrono>
+
 
 struct framedist{
 	framedist(KeyFrame* key,Sophus::Sim3f camToWorld):frame(key),camcenter(0.0f,0.0f,1.0f,1.0f)
@@ -94,12 +98,13 @@ void PCL_analyser::getDepthImage()
 		mykeyframes.push_back(framedist(keyframes[i],camToWorld));
 	}
 	std::sort(mykeyframes.begin(),mykeyframes.end());
-	int k = std::min(5,static_cast<int>(mykeyframes.size()));
+	int k = std::min(10,static_cast<int>(mykeyframes.size()));
 	mykeyframes.erase(mykeyframes.begin()+k,mykeyframes.end());
 
 	/*std::random_shuffle(mykeyframes.begin(),mykeyframes.end());
 	k = std::min(5,static_cast<int>(mykeyframes.size()));
 	mykeyframes.erase(mykeyframes.begin()+k,mykeyframes.end());*/
+	auto t1 = std::chrono::high_resolution_clock::now();
 	for(std::size_t i=0;i<mykeyframes.size();i++)
 	{
 		//get keyframe in analysed keyframe
@@ -107,10 +112,12 @@ void PCL_analyser::getDepthImage()
 		mykeyframes[i].frame->release();
 		*cloud+=*depth;
 		ROS_INFO_STREAM("cloud: "<< mykeyframes[i].frame->id);
-		if(k++>5)
-			break;
 	}
+  auto t2 = std::chrono::high_resolution_clock::now();
+
+ROS_INFO_STREAM("acumulating "<< k << "clouds took "<< std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() <<" milisecond(s).");
  	assert(width == depthImg.cols && height == depthImg.rows);
+t1 = std::chrono::high_resolution_clock::now();
 	for(PointCloud::iterator it = cloud->begin(); it != cloud->end(); it++){ 
 		if(it->z>maxZ|| it->z<minZ)
 			continue;
@@ -121,6 +128,9 @@ void PCL_analyser::getDepthImage()
 			continue;
 		depthImg.at<float>(y,x)=std::min(depthImg.at<float>(y,x),it->z);
     	}
+
+t2 = std::chrono::high_resolution_clock::now();
+ROS_INFO_STREAM("projection took "<<  std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() <<" milisecond(s).");
 	if (!pub_depth.getNumSubscribers())
 		return;
 	depthImg.convertTo(cv_depth_ptr->image,CV_16UC1,1000);
@@ -173,6 +183,14 @@ void PCL_analyser::threadLoop()
 		getDepthImage();
 		filterDepth();
 		calcCurvature();
+		cv::Vec4f camera;
+		camera[0]=fx/my_scaleDepthImage;
+		camera[1]=fy/my_scaleDepthImage;
+		camera[2]=cx/my_scaleDepthImage;
+		camera[3]=cy/my_scaleDepthImage;
+		Eigen::Affine3f trans;
+		trans=camToWorld.matrix();
+		stairs->process(CI.getMat(cv::ACCESS_READ),filt.getMat(cv::ACCESS_READ).clone(),H.getMat(cv::ACCESS_READ).clone(),camera,trans);
 	}
 }
 void PCL_analyser::filterDepth()
@@ -181,8 +199,11 @@ void PCL_analyser::filterDepth()
 /// \brief applies required filtering and resizes the image back to the original size.
 /// Applies first median filter to remove outliers and afterwards region growing to file the holes. Gaussian smoothing is applied to make the derivatis stable.
 ///
+	cv::UMat filt_t, mask;
+	cv::compare(depthImg,maxZ,mask,cv::CMP_EQ);
 	cv::Mat structElm = cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(struct_x*my_scaleDepthImage,struct_y*my_scaleDepthImage),cv::Point(-1,-1));
-	cv::erode(depthImg.getUMat(cv::ACCESS_READ), filt,structElm,cv::Point(-1,-1),1);
+	cv::erode(depthImg.getUMat(cv::ACCESS_READ), filt_t,structElm,cv::Point(-1,-1),1);
+	filt_t.copyTo(filt,mask);
 	cv::resize(filt.clone(),filt,cv::Size(0,0),1.0f/my_scaleDepthImage,1.0f/my_scaleDepthImage,cv::INTER_AREA);
 	cv::GaussianBlur(filt.clone(),filt,cv::Size(gauss_size,gauss_size),gauss_sigma);
 
@@ -216,14 +237,14 @@ void PCL_analyser::calcCurvature()
 	cv::sepFilter2D(filt, hxx, CV_64F, kx20, ky20);
 	cv::sepFilter2D(filt, hyy, CV_64F, kx02, ky02);
 //normalize derivatives
-	cv::divide(static_cast<double>(fx),filt,normx,1.0,CV_64F);
-	cv::divide(static_cast<double>(fy),filt,normy,1.0,CV_64F);
+	cv::divide(static_cast<double>(fx/my_scaleDepthImage),filt,normx,1.0,CV_64F);
+	cv::divide(static_cast<double>(fy/my_scaleDepthImage),filt,normy,1.0,CV_64F);
 	cv::multiply(normx,hx,hx);
 	cv::multiply(normx,hy,hy);
 	cv::multiply(normx.mul(normx),hxx,hxx);
 	cv::multiply(normy.mul(normy),hyy,hyy);
 	cv::multiply(normy.mul(normx),hxy,hxy);
-	cv::UMat Kden,Knom,K,H,CI,CInom,CIden,Hden,mask32,Hnom1,Hnom2,Hnom3;
+	cv::UMat Kden,Knom,K,CInom,CIden,Hden,mask32,Hnom1,Hnom2,Hnom3;
 
 	cv::pow(hx,2,hx2);
 	cv::pow(hy,2,hy2);

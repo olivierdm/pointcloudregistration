@@ -37,6 +37,7 @@ class PCL_analyser
 	int width, height;
 	cv_bridge::CvImagePtr cv_depth_ptr, cv_depthf_ptr,cv_H_ptr,cv_K_ptr,cv_CI_ptr;
 	bool wantExit,data_ready;
+	cv::UMat CI,H,filt;
 	//camera parameters
 	float fx,fy,cx,cy;
 	void getDepthImage();
@@ -48,7 +49,6 @@ class PCL_analyser
 	Eigen::Matrix4f soph;
 	int my_scaleDepthImage;
 	cv::Mat depthImg;
-	cv::UMat filt;
 	sensor_msgs::ImagePtr msg;
 };
 
