@@ -1,4 +1,5 @@
 #include "pointcloudregistration/linereg.h"
+#include "pointcloudregistration/settings.h"
 #include <pcl/filters/extract_indices.h>
 #include <pcl/sample_consensus/ransac.h>
 #include <pcl/sample_consensus/sac_model_line.h>
@@ -66,13 +67,16 @@ std::vector<DepthLine> depthLines(lines.size());
 		double curvature=0.0;
 		double H = 0.0;		
 		cv::LineIterator it(depthImg,cv::Point(lines[i][0],lines[i][1]),cv::Point(lines[i][2],lines[i][3]));
-		double nmbr=static_cast<double>(it.count);
+		double nmbr=0.0;
 		for(int j = 0; j < it.count; j++,++it)
 		{
 			cv::Point linePt=it.pos();
+			float depth=depthImg.at<float>(linePt);
+			if(depth==maxZ)
+				continue;
+			nmbr++;
 			curvature+=curv_weight.at<double>(linePt);
 			H+=meanCurvature.at<double>(linePt);
-			float depth=depthImg.at<float>(linePt);
 			pcl::PointXYZ point;
 		    	point.x=(linePt.x*fxi + cxi)*depth;
 		    	point.y=(linePt.y*fyi + cyi)*depth;
@@ -80,7 +84,7 @@ std::vector<DepthLine> depthLines(lines.size());
 			cloud->push_back(point);
 			depthLines[i].points.push_back(static_cast<int>(cloud->size()));
 		}
-		depthLines[i].convex=0.0<(H/nmbr);
+		depthLines[i].convex=0.0<H;
 		depthLines[i].curvature=curvature/nmbr;
 		depthLines[i].lineId=i;
 

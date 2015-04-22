@@ -104,7 +104,6 @@ void KeyFrame::refreshPCL()
 
 	 int err1=0;
     int err2=0;
-    int err3=0;
 	float Mdepth=0;
     float my_scale = camToWorld.scale();
 	PointCloud::Ptr unfiltered(new PointCloud);
@@ -118,31 +117,26 @@ void KeyFrame::refreshPCL()
 		err1++;
 		continue;
 		}
-		if(originalInput[x+y*width].idepth_var * depth4 * my_scale*my_scale > my_absTH){
-			err2++;
-			continue;
-		}
-			if(my_minNearSupport > 1)
-			{
-				int nearSupport = 0;
-				for(int dx=-1;dx<2;dx++)
-					for(int dy=-1;dy<2;dy++)
+		if(my_minNearSupport > 1)
+		{
+			int nearSupport = 0;
+			for(int dx=-1;dx<2;dx++)
+				for(int dy=-1;dy<2;dy++)
+				{
+					int idx = x+dx+(y+dy)*width;
+					if(originalInput[idx].idepth > 0)
 					{
-						int idx = x+dx+(y+dy)*width;
-						if(originalInput[idx].idepth > 0)
-						{
-							float diff = originalInput[idx].idepth - 1.0f / depth;
-							if(diff*diff < 2*originalInput[x+y*width].idepth_var)
-								nearSupport++;
-						}
+						float diff = originalInput[idx].idepth - 1.0f / depth;
+						if(diff*diff < 2*originalInput[x+y*width].idepth_var)
+							nearSupport++;
 					}
-
-				if(nearSupport < my_minNearSupport){
-					err3++;
-					continue;
 				}
-			}
 
+			if(nearSupport < my_minNearSupport){
+				err2++;
+				continue;
+			}
+		}
 
 		Mdepth+=depth;
          //  pcl::PointXYZRGB point(originalInput[x+y*width].color[0], originalInput[x+y*width].color[1],originalInput[x+y*width].color[2]);
@@ -158,7 +152,7 @@ void KeyFrame::refreshPCL()
   sor.setStddevMulThresh (2.0);
   sor.filter (*cloud);*/
 	Mdepth/=cloud->width;
-       ROS_INFO_STREAM("cloud "<< id << ": error 1: "<< err1 << " error 2: "<< err2 << " error 3: " << err3 << " number of points: " << cloud->width << " Mean depth: "<< Mdepth);
+       ROS_INFO_STREAM("cloud "<< id << ": error 1: "<< err1 << " error 2: "<< err2 << " number of points: " << cloud->width << " Mean depth: "<< Mdepth);
 }
 /*sensor_msgs::PointCloud2::Ptr KeyFrame::getROSMsg()
 {
