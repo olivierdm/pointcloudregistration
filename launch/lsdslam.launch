@@ -1,0 +1,11 @@
+<launch>
+
+<node name="lsd_slam_core" pkg="lsd_slam_core" type="live_slam">
+<param name="image" value="/ardrone/front/image_rect" />
+<param name="camera_info" value="/ardrone/front/camera_info" />
+<param name="minUseGrad" value="15" />
+<param name="cameraPixelNoise" value="30" />
+</node>
+
+</launch>
+
