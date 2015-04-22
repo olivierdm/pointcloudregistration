@@ -2,13 +2,15 @@
 #include <opencv2/opencv.hpp>
 #include "pointcloudregistration/linereg.h"
 #include <math.h>       /* tan */
+#include "ros/package.h"
+
 
 Vision::Vision(LineReg* stair): stairs(stair),nh("~"),it(nh),cv_lsd_ptr(new cv_bridge::CvImage),cv_det_ptr(new cv_bridge::CvImage)
 {
 	pub_lsd = it.advertise("lsd",1);
 	pub_detect = it.advertise("detect",1);
 	ls = cv::createLineSegmentDetector(cv::LSD_REFINE_ADV);
-	stair_cascade_name = "stair_cascade.xml";
+	stair_cascade_name = ros::package::getPath("pointcloudregistration")+"/src/stair_cascade.xml";
 	if( !stair_cascade.load( stair_cascade_name ) )
 		{ROS_WARN_STREAM("Error loading cascade: " << stair_cascade_name);  };
 	wantExit=false;

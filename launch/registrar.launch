@@ -3,8 +3,7 @@
 <node ns="/ardrone/front" name="Image_Rectifier_Node" pkg="image_proc" type="image_proc">
 </node>
 
-<node name="lsd_slam_viewer" pkg="lsd_slam_viewer" type="viewer" output="screen">
- </node>
+<!-- <node name="lsd_slam_viewer" pkg="lsd_slam_viewer" type="viewer" output="screen"></node> -->
 
 <node name="lsd_slam_core" pkg="lsd_slam_core" type="live_slam">
 	<remap from="image" to="/ardrone/front/image_rect" />
@@ -16,7 +15,6 @@
 <node name="pointcloudregistration" pkg="pointcloudregistration" type="registrar">
 	<remap from="image" to="/ardrone/front/image_rect" />
 </node>
-
 
 </launch>
 

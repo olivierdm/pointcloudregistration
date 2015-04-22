@@ -161,6 +161,11 @@ install(DIRECTORY launch/
     PATTERN ".git" EXCLUDE
 )
 
+install(FILES
+	src/stair_cascade.xml
+	DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
 ## Mark other files for installation (e.g. launch and bag files, etc.)
 # install(FILES
 #   # myfile1
