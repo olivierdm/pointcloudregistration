@@ -8,15 +8,18 @@
 #include <cmath>        // std::abs
 struct DepthLine
 {
+DepthLine(cv::Vec4f & lin):line(lin){}
+cv::Vec4f line;
 std::vector<int> points;
 std::vector<int> inliers;
 double curvature;
-int lineId;
 bool convex;
 };
 struct Candidate
 {
-	int bla;
+	Candidate(cv::Rect & rect): rectangle(rect){}
+	cv::Rect rectangle;
+	std::vector<DepthLine> lines;
 };
 LineReg::LineReg(PCL_registration* reg):registrar(reg),nh("~"),it(nh),cloud(new pcl::PointCloud<pcl::PointXYZ>),cv_debug_ptr(new cv_bridge::CvImage),wantExit(false),rectangles_ready(false),curvature_ready(false)
 {
@@ -65,10 +68,10 @@ void LineReg::get3DLines()
 ROS_INFO("getting lines");
 cloud->clear();
  std::vector<int> inliers;
-std::vector<DepthLine> depthLines(lines.size());
+
 //get points from lines and depthImage
-lines.erase(remove_if(lines.begin(),lines.end(),[this](cv::Vec4f& line){return SegmentOutsideRectangles(line);}),lines.end());
-	for(size_t i = 0; i < lines.size();i++)
+//lines.erase(remove_if(lines.begin(),lines.end(),[this](cv::Vec4f& line){return SegmentOutsideRectangles(line);}),lines.end());
+	/*for(size_t i = 0; i < lines.size();i++)
 	{
 		double curvature=0.0;
 		double H = 0.0;		
@@ -94,6 +97,10 @@ lines.erase(remove_if(lines.begin(),lines.end(),[this](cv::Vec4f& line){return S
 		depthLines[i].curvature=curvature/nmbr;
 		depthLines[i].lineId=i;
 
+	}*/
+	for(auto it=candidates.begin();it != candidates.end(); it++)
+	{
+		remove_copy_if (depthLines.begin(),depthLines.end(),it->lines.begin(),[&](DepthLine& line){return SegmentOutsideRectangle(it->rectangle,line.line);});
 	}
 	std::vector<int> lineInliers;
 	for(size_t i = 0; i < depthLines.size();i++)
@@ -121,17 +128,17 @@ lines.erase(remove_if(lines.begin(),lines.end(),[this](cv::Vec4f& line){return S
 		registrar->drawPlane(plane,campose);
 	if (pub_det.getNumSubscribers() != 0)
 	{
-		for(size_t i=0 ; i < depthLines.size();i++)
+		/*for(size_t i=0 ; i < depthLines.size();i++)
 		{
 			cv::Vec4f line =lines[depthLines[i].lineId];
 			cv::Scalar color(0,255*depthLines[i].curvature,255*(1.0f-depthLines[i].curvature));
 			cv::line(cv_debug_ptr->image,cv::Point2f(line[0],line[1]),cv::Point2f(line[2],line[3]),color);
 		}
-		pub_det.publish(cv_debug_ptr->toImageMsg());
+		pub_det.publish(cv_debug_ptr->toImageMsg());*/
 	}
 }
 
-void LineReg::process(std::vector<cv::Rect> objRectangles,std::vector<cv::Vec4f> good_lines, std::vector<float> quality,cv::Mat original)//objectdet,lsd
+void LineReg::process(std::vector<cv::Rect> rectangles,std::vector<cv::Vec4f> good_lines, std::vector<float> quality,cv::Mat original)//objectdet,lsd
 {
 ///
 /// \brief  Accepts the data of an image and copies the neccesary data to the adequate private variables.
@@ -142,7 +149,10 @@ void LineReg::process(std::vector<cv::Rect> objRectangles,std::vector<cv::Vec4f>
 	ROS_INFO_STREAM("received vision data");
 	lines=good_lines;
 	lineQuality=quality;
-	rectangles=objRectangles;
+	candidates.clear();
+	candidates.reserve(rectangles.size());
+	for_each(rectangles.begin(),rectangles.end(),[this](cv::Rect & rectangle){candidates.push_back(Candidate(rectangle));});
+	for_each(lines.begin(),lines.end(),[this](cv::Vec4f & line ){depthLines.push_back(DepthLine(line));});
 	cv_debug_ptr->image=original;
 	rectangles_ready=true;
 	//notify thread
@@ -170,7 +180,7 @@ void LineReg::process(cv::Mat CI,cv::Mat depthImgf,cv::Mat H, cv::Vec4f camera, 
 	//notify thread
 	newData.notify_one();
 }
-bool LineReg::SegmentOutsideRectangles(cv::Vec4f &line)
+/*bool LineReg::SegmentOutsideRectangles(cv::Vec4f &line)
 {
 	for(auto j=rectangles.begin();j!=rectangles.end();j++)
 	{
@@ -178,8 +188,8 @@ bool LineReg::SegmentOutsideRectangles(cv::Vec4f &line)
 			return false;
 	}
 	return true;
-}
-bool LineReg::SegmentIntersectRectangle(cv::Rect& rectangle, cv::Vec4f& line)
+}*/
+bool LineReg::SegmentOutsideRectangle(cv::Rect& rectangle, cv::Vec4f& line)
 {
 double a_p1x = static_cast<double>(line[0]);
 double a_p1y = static_cast<double>(line[1]);
@@ -215,7 +225,7 @@ double a_rectangleMaxY = static_cast<double>(rectangle.y+rectangle.height);
 
     if(minX > maxX) // If their projections do not intersect return false
     {
-      return false;
+      return true;
     }
 
     // Find corresponding min and max Y for min and max X we found before
@@ -254,8 +264,8 @@ double a_rectangleMaxY = static_cast<double>(rectangle.y+rectangle.height);
 
     if(minY > maxY) // If Y-projections do not intersect return false
     {
-      return false;
+      return true;
     }
 
-    return true;
+    return false;
   }

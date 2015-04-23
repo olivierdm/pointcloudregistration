@@ -9,6 +9,7 @@
 #include <pcl/common/common.h>
 class PCL_registration;
 struct Candidate;
+struct DepthLine;
 class LineReg
 {
     public:
@@ -17,7 +18,7 @@ class LineReg
 	void process(cv::Mat,cv::Mat,cv::Mat,cv::Vec4f, const Eigen::Affine3f &);
 	void process(std::vector<cv::Rect>,std::vector<cv::Vec4f> lines, std::vector<float> quality,cv::Mat);
 	bool ready();
-	bool SegmentOutsideRectangles(cv::Vec4f&);
+	bool SegmentOutsideRectangle(cv::Rect&, cv::Vec4f&);
     protected:
     private:
 	PCL_registration* registrar;
@@ -29,12 +30,12 @@ class LineReg
 	bool wantExit,rectangles_ready,curvature_ready;
         std::vector<cv::Vec4f> lines;
 	std::vector<float> lineQuality;
-	std::vector<cv::Rect> rectangles;
+	std::vector<DepthLine> depthLines;
 	std::vector<Candidate> candidates;
 	boost::mutex dataMutex;
 	boost::thread worker;
 	void get3DLines();
-	bool SegmentIntersectRectangle(cv::Rect&, cv::Vec4f&);
+	//bool SegmentIntersectRectangle(cv::Rect&, cv::Vec4f&);
 
 	boost::condition_variable newData;
 	void threadLoop();
