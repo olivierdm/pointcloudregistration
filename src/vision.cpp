@@ -1,4 +1,5 @@
 #include "pointcloudregistration/vision.h"
+#include "pointcloudregistration/settings.h"
 #include <opencv2/opencv.hpp>
 #include "pointcloudregistration/linereg.h"
 #include <math.h>       /* tan */
@@ -55,7 +56,7 @@ void Vision::threadLoop()
 			return;
 		getLines();
 		detect();
-		stairs->process(rectangles,good_lines, quality,cv_input_ptr->image.clone());
+		stairs->process(rectangles,lines, quality,cv_input_ptr->image.clone());
 	}
 }
 void Vision::getLines()
@@ -67,22 +68,15 @@ void Vision::getLines()
 	//convert to grayscale
 	cv_lsd_ptr->image=cv_input_ptr->image.clone();
 	cv::cvtColor(cv_input_ptr->image,InputGray,cv::COLOR_BGR2GRAY);
-	good_lines.clear();
-	std::vector<cv::Vec4f> lines_std, bad_lines;
+	std::vector<cv::Vec4f> bad_lines;
 	std::vector<float> quality_std;
 	//detect using lsd
-	ls->detect(InputGray, lines_std,cv::noArray(),cv::noArray(),quality_std);
-	double maxAngle = 8.0;
+	ls->detect(InputGray, lines,cv::noArray(),cv::noArray(),quality_std);
 	float maxtan = std::tan(static_cast<float>(maxAngle)/180.0f * CV_PI);
-	for(size_t i= 0; i < lines_std.size();i++)
-	{
-		if(abs((lines_std[i][3] - lines_std[i][1])/(lines_std[i][2]-lines_std[i][0]))<maxtan){
-		good_lines.push_back(lines_std[i]);
-		quality.push_back(quality_std[i]);
-		}else{
-			bad_lines.push_back(lines_std[i]);
-		}
-	}
+	auto iter(remove_if(lines.begin(),lines.end(),[&maxtan](cv::Vec4f& line) {return abs((line[3] - line[1])/(line[2]-line[0]))>maxtan;} ));
+	bad_lines.insert(bad_lines.begin(),iter,lines.end());
+	lines.erase(iter,lines.end());
+
 	if (pub_lsd.getNumSubscribers() != 0)
 	{
 		float y =(cv_input_ptr->image.cols)/2.0f*tan(pose->roll/180.0*CV_PI);
@@ -91,13 +85,14 @@ void Vision::getLines()
 		ls->drawSegments(cv_lsd_ptr->image,bad_lines);
 		cv::line(cv_lsd_ptr->image,cv::Point2f(0.0f,y1),cv::Point2f(static_cast<float>(cv_lsd_ptr->image.cols),y2),cv::Scalar(255,0,0));
 		cv::Scalar color(0,255,0);
-		for(size_t i=0 ; i < good_lines.size();i++)
+		for(size_t i=0 ; i < lines.size();i++)
 		{
-			cv::line(cv_lsd_ptr->image,cv::Point2f(good_lines[i][0],good_lines[i][1]),cv::Point2f(good_lines[i][2],good_lines[i][3]),color);
+			cv::line(cv_lsd_ptr->image,cv::Point2f(lines[i][0],lines[i][1]),cv::Point2f(lines[i][2],lines[i][3]),color);
 		}
 		pub_lsd.publish(cv_lsd_ptr->toImageMsg());
 	}
 }
+
 void Vision::detect()
 {
 ///

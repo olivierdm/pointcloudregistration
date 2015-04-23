@@ -8,7 +8,7 @@ This class is used to store the received keyframes and their attributes.
 #include <pcl/common/transforms.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 
-KeyFrame::KeyFrame(): width(0), height(0), my_scaledTH(0.0f), my_absTH(0.0f) , cloud (new PointCloud), originalInput(0)
+KeyFrame::KeyFrame(): width(0), height(0), my_scaledTH(0.0f), cloud (new PointCloud), originalInput(0)
 {
 /// 
 /// \brief Default constructor, solely used to initialize private members.
@@ -86,7 +86,6 @@ void KeyFrame::refreshPCL()
 /// Checks if the local parameters still correspond to the global parameters. If not the pcl cloud is cleared and the input data is rendered in the pcl cloud.
 ///
 	bool paramsStillGood = my_scaledTH == scaledDepthVarTH &&
-		my_absTH == absDepthVarTH &&
 		my_scale*1.2 > camToWorld.scale() &&
 		my_scale < camToWorld.scale()*1.2 &&
 		my_minNearSupport == minNearSupport &&
@@ -97,7 +96,6 @@ void KeyFrame::refreshPCL()
 		}
 	cloud->clear();
 	my_scaledTH =scaledDepthVarTH;
-	my_absTH = absDepthVarTH;
 	my_scale = camToWorld.scale();
 	my_minNearSupport = minNearSupport;
 	my_sparsifyFactor = sparsifyFactor;
@@ -105,7 +103,6 @@ void KeyFrame::refreshPCL()
 	 int err1=0;
     int err2=0;
 	float Mdepth=0;
-    float my_scale = camToWorld.scale();
 	PointCloud::Ptr unfiltered(new PointCloud);
     for(int y=1; y<height-1; y++)
         for(int x=1; x<width-1; x++)

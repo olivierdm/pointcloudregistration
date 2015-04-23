@@ -30,7 +30,7 @@ class Vision
 	std::vector<cv::Rect> rectangles;
 	cv::Mat InputGray;
 	//use std::vector<cv::Vec4i> for older implementations
-        std::vector<cv::Vec4f> good_lines;
+        std::vector<cv::Vec4f> lines;
 	std::vector<float> quality;
 	boost::mutex imageMutex;
 	boost::thread worker;

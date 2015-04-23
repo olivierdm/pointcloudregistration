@@ -39,7 +39,7 @@ private:
 	void refreshPCL();
 	boost::mutex cloudMutex;
 
-	float my_scaledTH, my_absTH, my_scale;
+	float my_scaledTH, my_scale;
 	int my_minNearSupport;
 	int my_sparsifyFactor;
 

@@ -18,6 +18,7 @@ float struct_x=3;
 float struct_y=2;
 float gauss_sigma=2.0f;
 int gauss_size=5;
+double maxAngle = 8.0;
 bool keepInMemory=true;
 bool showKFCameras = true;
 bool showKFPointclouds = true;
@@ -26,7 +27,6 @@ bool showCurrentCamera = true;
 bool showCurrentPointcloud = true;
 
 float scaledDepthVarTH = 0.01;
-float absDepthVarTH = 0.01;
 int minNearSupport = 5;
 int cutFirstNKf = 5;
 int sparsifyFactor = 1;

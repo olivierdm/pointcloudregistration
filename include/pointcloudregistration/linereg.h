@@ -8,6 +8,7 @@
 #include <opencv2/opencv.hpp>
 #include <pcl/common/common.h>
 class PCL_registration;
+struct Candidate;
 class LineReg
 {
     public:
@@ -16,6 +17,7 @@ class LineReg
 	void process(cv::Mat,cv::Mat,cv::Mat,cv::Vec4f, const Eigen::Affine3f &);
 	void process(std::vector<cv::Rect>,std::vector<cv::Vec4f> lines, std::vector<float> quality,cv::Mat);
 	bool ready();
+	bool SegmentOutsideRectangles(cv::Vec4f&);
     protected:
     private:
 	PCL_registration* registrar;
@@ -28,9 +30,12 @@ class LineReg
         std::vector<cv::Vec4f> lines;
 	std::vector<float> lineQuality;
 	std::vector<cv::Rect> rectangles;
+	std::vector<Candidate> candidates;
 	boost::mutex dataMutex;
 	boost::thread worker;
 	void get3DLines();
+	bool SegmentIntersectRectangle(cv::Rect&, cv::Vec4f&);
+
 	boost::condition_variable newData;
 	void threadLoop();
 	cv::Mat depthImg,curv_weight,meanCurvature;

@@ -8,6 +8,7 @@ extern float struct_y;
 extern float pointTesselation;
 extern float lineTesselation;
 extern float gauss_sigma;
+extern 	double maxAngle;
 extern int gauss_size;
 extern bool keepInMemory;
 extern bool showKFCameras;
@@ -17,7 +18,6 @@ extern bool showCurrentCamera;
 extern bool showCurrentPointcloud;
 
 extern float scaledDepthVarTH;
-extern float absDepthVarTH;
 extern int minNearSupport;
 extern int cutFirstNKf;
 extern int sparsifyFactor;
