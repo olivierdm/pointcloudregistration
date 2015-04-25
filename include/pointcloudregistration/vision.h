@@ -16,6 +16,7 @@ class Vision
         virtual ~Vision();
 	void process(const sensor_msgs::ImageConstPtr&,const tum_ardrone::filter_stateConstPtr&);
 	bool ready();
+	void operator()(const sensor_msgs::ImageConstPtr&, const tum_ardrone::filter_stateConstPtr&);
     protected:
     private:
 	std::string stair_cascade_name;

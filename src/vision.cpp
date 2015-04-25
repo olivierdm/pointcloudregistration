@@ -37,6 +37,25 @@ Vision::~Vision()
 	std::cout<<"visor destroyed"<< std::endl;
 	//dtor
 }
+void Vision::operator()(const sensor_msgs::ImageConstPtr& msg, const tum_ardrone::filter_stateConstPtr& poseMsg)
+{
+	//copy the msg to a cv::Mat instance
+	try
+	{
+		cv_input_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+		pose=poseMsg;
+		data_ready=true;
+	}
+	catch (cv_bridge::Exception& e)
+	{
+		ROS_ERROR("cv_bridge exception: %s", e.what());
+		return;
+	}
+	ROS_INFO("process image");
+	getLines();
+	detect();
+	stairs->process(rectangles,lines, quality,cv_input_ptr->image.clone());
+}
 void Vision::threadLoop()
 {
 ///

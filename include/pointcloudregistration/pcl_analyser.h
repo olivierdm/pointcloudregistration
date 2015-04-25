@@ -19,7 +19,7 @@ class PCL_analyser
     public:
         PCL_analyser(KeyFrameGraph*,LineReg*);
         virtual ~PCL_analyser();
-			void operator()(lsd_slam_viewer::keyframeMsgConstPtr msg);
+			void operator()(lsd_slam_viewer::keyframeMsgConstPtr);
 	void process(lsd_slam_viewer::keyframeMsgConstPtr);
 	bool ready();
     protected:
