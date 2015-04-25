@@ -20,7 +20,7 @@ cv_bridge)
 find_package(PCL 1.7 REQUIRED)
 find_package(Eigen REQUIRED)
 find_package(OpenCV REQUIRED) 
-#find_package(TBB REQUIRED)
+find_package(TBB REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 find_package(Boost REQUIRED COMPONENTS thread system)
@@ -108,8 +108,8 @@ set(CMAKE_CXX_FLAGS
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
- include_directories(SYSTEM include ${catkin_INCLUDE_DIRS}   ${PCL_INCLUDE_DIRS} ${Eigen_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})
-link_directories(${PCL_LIBRARY_DIRS})
+ include_directories(SYSTEM include ${catkin_INCLUDE_DIRS}   ${PCL_INCLUDE_DIRS} ${Eigen_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${TBB_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS} ${TBB_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
 set(HEADER_DIR include/pointcloudregistration)
@@ -127,7 +127,7 @@ set(HEADER_FILES ${HEADER_DIR}/KeyFrame.h ${HEADER_DIR}/KeyFrameGraph.h  ${HEADE
 # add_dependencies(vision_node vision_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
- target_link_libraries(registrar ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS} )
+ target_link_libraries(registrar ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBS} ${TBB_LIBRARIES} )
 #############
 ## Install ##
 #############

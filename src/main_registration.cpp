@@ -2,6 +2,7 @@
 @file main_registration.cpp
 */
 #include "ros/ros.h"
+#include <ros/callback_queue.h>
 #include <image_transport/image_transport.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
@@ -16,12 +17,14 @@
 #include "pointcloudregistration/settings.h"
 #include <Eigen/Geometry>
 #include <iostream>
+#include "tbb/task_group.h"
 
 PCL_registration* registrar=0;
 PCL_analyser* pcl_analyse=0;
 KeyFrameGraph* graph=0;
 Vision* visor=0;
 LineReg* stairs=0;
+tbb::task_group g;
 bool firstKF=false;
 
 void frameCb(lsd_slam_viewer::keyframeMsgConstPtr msg)
@@ -45,10 +48,12 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 	//pass the data and do processing
 	ROS_INFO("in callback");
 	visor->process(imgMsg,poseMsg);
-	pcl_analyse->process(frameMsg);
+	g.run([&frameMsg]{(*pcl_analyse)(frameMsg);});
+	g.wait();
+	//pcl_analyse->process(frameMsg);
 }
 
-void rosThreadLoop()
+/*void rosThreadLoop()
 {
 ///
 /// \brief This void function takes care of handling the different subscribers and is started on startup.
@@ -77,7 +82,7 @@ void rosThreadLoop()
 	ros::shutdown();
 	printf("Exiting ROS thread\n");
 	//exit(1);
-}
+}*/
 
 
 int main( int argc, char** argv )
@@ -85,16 +90,38 @@ int main( int argc, char** argv )
 	boost::thread rosThread;
 	// start ROS thread
 	ros::init(argc, argv, "registrar");
-	rosThread = boost::thread(rosThreadLoop);
+	//rosThread = boost::thread(rosThreadLoop);
 	graph = new KeyFrameGraph();
 	registrar = new PCL_registration(graph);
 	stairs = new LineReg(registrar);
 	visor = new Vision(stairs);
 	pcl_analyse = new PCL_analyser(graph,stairs);
 
-	rosThread.join();
+	ros::CallbackQueue lsdqueue;
+	ros::NodeHandle lsdhandler;
+	lsdhandler.setCallbackQueue(&lsdqueue);
+	ros::Subscriber keyFrames_sub = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/keyframes"),5, frameCb);
+	ros::Subscriber graph_sub  = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/graph"),1, graphCb);
+	ros::AsyncSpinner lsdspinner(1, &lsdqueue);
+	lsdspinner.start();
+
+	ros::CallbackQueue processqueue;
+	ros::NodeHandle processhandler;
+	processhandler.setCallbackQueue(&processqueue);
+	image_transport::ImageTransport it(processhandler);
+	image_transport::SubscriberFilter image_sub(it, processhandler.resolveName("image"),1);
+	message_filters::Subscriber<lsd_slam_viewer::keyframeMsg> liveFrames_sub(processhandler,processhandler.resolveName("lsd_slam/liveframes"), 1);
+	message_filters::Subscriber<tum_ardrone::filter_state> pose_sub(processhandler,processhandler.resolveName("/ardrone/predictedPose"),1);
+	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, lsd_slam_viewer::keyframeMsg, tum_ardrone::filter_state> MySyncPolicy;
+	//ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
+	message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(2), image_sub, liveFrames_sub, pose_sub);
+	sync.registerCallback(boost::bind(&callback, _1, _2,_3));
+	ros::AsyncSpinner processspinner(1, &processqueue);
+	processspinner.start();
+
+	ros::waitForShutdown();
+	//rosThread.join();
 	std::cout<<"Shutting down ... " << std::endl;
-	ros::shutdown();
 	delete registrar;
 	//can not be deleted causes lock at shutdown
 	//delete visor;

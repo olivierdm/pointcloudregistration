@@ -73,6 +73,36 @@ PCL_analyser::~PCL_analyser()
 	//dtor
 }
 
+
+void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg)
+{
+		memcpy(camToWorld.data(), msg->camToWorld.data(), 7*sizeof(float));
+		my_scaleDepthImage= static_cast<int> (scaleDepthImage +0.5f);
+		width=my_scaleDepthImage*msg->width;
+		height=my_scaleDepthImage*msg->height;
+		fx=my_scaleDepthImage*msg->fx;
+		fy=my_scaleDepthImage*msg->fy;
+		cx=my_scaleDepthImage*msg->cx;
+		cy=my_scaleDepthImage*msg->cy;
+		depthImg.create(height,width,CV_32F);//reinitializes if needed
+		//copy header
+		header=msg->header;
+		data_ready=true;
+		ROS_INFO_STREAM("fx: "<< fx << ", fy: "<< fy << ", cx: "<< cx << ", cy: " << cy);
+		ROS_INFO("starting detection loop");
+		getDepthImage();
+		filterDepth();
+		calcCurvature();
+		cv::Vec4f camera;
+		camera[0]=fx/my_scaleDepthImage;
+		camera[1]=fy/my_scaleDepthImage;
+		camera[2]=cx/my_scaleDepthImage;
+		camera[3]=cy/my_scaleDepthImage;
+		Eigen::Affine3f trans;
+		trans=camToWorld.matrix();
+		stairs->process(CI.getMat(cv::ACCESS_READ),filt.getMat(cv::ACCESS_READ).clone(),H.getMat(cv::ACCESS_READ).clone(),camera,trans);
+
+}
 void PCL_analyser::getDepthImage()
 {
 ///

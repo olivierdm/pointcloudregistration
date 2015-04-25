@@ -24,7 +24,6 @@ class LineReg
 	PCL_registration* registrar;
 	ros::NodeHandle nh;
 	image_transport::ImageTransport it;
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud;
 	image_transport::Publisher pub_det;
 	cv_bridge::CvImagePtr cv_debug_ptr;
 	bool wantExit,rectangles_ready,curvature_ready;
@@ -34,7 +33,9 @@ class LineReg
 	std::vector<Candidate> candidates;
 	boost::mutex dataMutex;
 	boost::thread worker;
+	void getParallelLines();
 	void get3DLines();
+	void getPlanes();
 	//bool SegmentIntersectRectangle(cv::Rect&, cv::Vec4f&);
 
 	boost::condition_variable newData;
