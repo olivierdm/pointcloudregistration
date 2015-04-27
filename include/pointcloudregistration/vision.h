@@ -3,41 +3,33 @@
 #include <ros/ros.h>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
-#include <sensor_msgs/image_encodings.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/objdetect/objdetect.hpp>
 #include <boost/thread.hpp>
 #include <tum_ardrone/filter_state.h>
-class LineReg;
 class Vision
 {
     public:
-        Vision(LineReg*);
+        Vision();
         virtual ~Vision();
 	//void process(const sensor_msgs::ImageConstPtr&,const tum_ardrone::filter_stateConstPtr&);
 	//bool ready();
-	void operator()(const sensor_msgs::ImageConstPtr&, const tum_ardrone::filter_stateConstPtr&, std::vector<cv::Rect>&, std::vector<cv::Vec4f>&);
+	void operator()(cv_bridge::CvImagePtr&, const tum_ardrone::filter_stateConstPtr&, std::vector<cv::Rect>&, std::vector<cv::Vec4f>&);
     protected:
     private:
 	std::string stair_cascade_name;
 	cv::CascadeClassifier stair_cascade;
-	LineReg* stairs;
 	ros::NodeHandle nh;
 	image_transport::ImageTransport it;
 	image_transport::Publisher pub_lsd, pub_detect;
 	cv::Ptr<cv::LineSegmentDetector> ls;
-	cv_bridge::CvImagePtr cv_lsd_ptr,cv_det_ptr;
-	bool wantExit,data_ready;
-	cv::Mat InputGray;
 	//use std::vector<cv::Vec4i> for older implementations
 	std::vector<float> quality;
 	boost::mutex imageMutex;
 	//boost::thread worker;
-	void getLines(cv_bridge::CvImagePtr &, std::vector<cv::Vec4f>&);
-	void detect(cv_bridge::CvImagePtr &, std::vector<cv::Rect>&);
-	boost::condition_variable newData;
+	void getLines(const cv_bridge::CvImagePtr &, cv::Mat&, const tum_ardrone::filter_stateConstPtr&, std::vector<cv::Vec4f>&);
+	void detect(const cv_bridge::CvImagePtr &, cv::Mat&, std::vector<cv::Rect>&);
 	//void threadLoop();
-	tum_ardrone::filter_stateConstPtr pose;
 };
 
 #endif // VISION_H

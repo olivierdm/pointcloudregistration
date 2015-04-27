@@ -2,6 +2,8 @@
 #include "pointcloudregistration/settings.h"
 #include <pcl/filters/extract_indices.h>
 #include <sensor_msgs/image_encodings.h>
+#include <Eigen/Geometry>
+#include <pcl/common/transforms.h>
 #include <pcl/sample_consensus/ransac.h>
 #include <pcl/sample_consensus/sac_model_line.h>
 #include <pcl/sample_consensus/sac_model_plane.h>
@@ -16,7 +18,6 @@ DepthLine(cv::Vec4f & lin):line(lin),curvature(0.0),rico(6.0f)
 {
 	//ctor
 }
-//DepthLine():curvature(0.0){}
 cv::Vec4f line;
 std::vector<int> points;
 std::vector<int> inliers;
@@ -38,27 +39,28 @@ struct Candidate
 	std::vector<int> lineInliers;
 	std::vector<int> planeInliers;
 };
-LineReg::LineReg(PCL_registration* reg):registrar(reg),nh("~"),it(nh),cv_debug_ptr(new cv_bridge::CvImage),wantExit(false),rectangles_ready(false),curvature_ready(false)
+LineReg::LineReg(PCL_registration* reg):registrar(reg),nh("~"),it(nh)
 {
 	pub_det = it.advertise("lines_curv",1);
-	cv_debug_ptr->encoding="bgr8";
-	cv_debug_ptr->header.frame_id="line_segment";
-	//worker = boost::thread(boost::bind(&LineReg::threadLoop,this));
+	/*cv_debug_ptr->encoding="bgr8";
+	cv_debug_ptr->header.frame_id="line_segment";*/
 //ctor
 }
 
 LineReg::~LineReg()
 {
-	{
 	boost::mutex::scoped_lock lock(dataMutex);
-	wantExit=true;
-	newData.notify_all();
-	}
-	//worker.join();
 //dtor
 }
-void LineReg::operator()(cv::UMat & depthImg, cv::UMat &  H, cv::UMat & CI, std::vector<cv::Rect> & rectangles, std::vector<cv::Vec4f> &  lines, const sensor_msgs::ImageConstPtr& imgMsg, const lsd_slam_viewer::keyframeMsgConstPtr &frameMsg, const tum_ardrone::filter_stateConstPtr &poseMsg)
+void LineReg::operator()(cv::UMat & depthImg, cv::UMat &  H, cv::UMat & CI, std::vector<cv::Rect> & rectangles, std::vector<cv::Vec4f> &  lines, cv_bridge::CvImagePtr & cv_input_ptr, const lsd_slam_viewer::keyframeMsgConstPtr &frameMsg, const tum_ardrone::filter_stateConstPtr &poseMsg)
 {
+///
+/// \brief  Accepts the data.
+/// @param[in] lines set of lines that are detected on the visual image
+// @param[in] quality vector indicating the quality of each line 
+/// @param[in] CI matrix containing the curvature in each point
+/// @param[in] deptImg filtered depth image
+// @param[in] vector containing the intrinsic camera parameters
 	boost::mutex::scoped_lock lock(dataMutex);
 	candidates.clear();
 	depthLines.clear();
@@ -67,16 +69,8 @@ void LineReg::operator()(cv::UMat & depthImg, cv::UMat &  H, cv::UMat & CI, std:
 	depthLines.reserve(lines.size());
 	for_each(lines.begin(),lines.end(),[this](cv::Vec4f & line ){depthLines.push_back(DepthLine(line));});
 	//copy the msg to a cv::Mat instance
-	try
-	{
-		cv_debug_ptr = cv_bridge::toCvCopy(imgMsg, sensor_msgs::image_encodings::BGR8);
-	}
-	catch (cv_bridge::Exception& e)
-	{
-		ROS_ERROR("cv_bridge exception: %s", e.what());
-		return;
-	}
-	cv::Mat curv_weight, meanCurvature(H.getMat(cv::ACCESS_READ));
+	cv_bridge::CvImagePtr cv_debug_ptr(new cv_bridge::CvImage(cv_input_ptr->header,"bgr8",cv_input_ptr->image.clone()));
+	cv::UMat curv_weight;
 	cv::add(CI.mul(0.95f),0.05f,curv_weight);
 	float fxi=1.0f/frameMsg->fx;
 	float fyi=1.0f/frameMsg->fy;
@@ -86,43 +80,12 @@ tbb::parallel_for_each(candidates.begin(),candidates.end(),[&](Candidate & can){
 		getParallelLines(can);
 		if(can.nmbrOfLines==0)
 			return;
-		get3DLines(can, curv_weight, meanCurvature, fxi, fyi, cxi, cyi);
-		getPlane(can);
+		get3DLines(can, depthImg.getMat(cv::ACCESS_READ), curv_weight.getMat(cv::ACCESS_READ), H.getMat(cv::ACCESS_READ), fxi, fyi, cxi, cyi);
+		getPlane(can, cv_debug_ptr, poseMsg);
 		ROS_INFO("process candidate");});
 	if(pub_det.getNumSubscribers() != 0)
 		pub_det.publish(cv_debug_ptr->toImageMsg());
 }
-/*void LineReg::threadLoop()
-{
-///
-/// \brief This method is started in a different thread and waits for data. Upon reception of new data the methods
-///Vision::getLines() and Vision::detect() are called.
-///
-	ROS_INFO_STREAM("line regression constructed");
-	while(true)
-	{
-		boost::mutex::scoped_lock lock(dataMutex);
-		while(!rectangles_ready||!curvature_ready)//check if new message passed
-		{
-			newData.wait(lock);
-		}
-		rectangles_ready=false;
-		curvature_ready=false;
-		if(wantExit)
-			return;
-tbb::parallel_for_each(candidates.begin(),candidates.end(),[this](Candidate & can){
-		getParallelLines(can);
-		if(can.nmbrOfLines==0)
-			return;
-		get3DLines(can);
-		getPlane(can);
-		ROS_INFO("process candidate");});
-	if(pub_det.getNumSubscribers() != 0)
-		pub_det.publish(cv_debug_ptr->toImageMsg());
-
-	//candidates.erase(remove_if(candidates.begin(),candidates.end(),[](Candidate & can){return can.nmbrOfLines==0;}));
-	}
-}*/
 void LineReg::getParallelLines(Candidate & can)
 {
 
@@ -151,6 +114,7 @@ void LineReg::getParallelLines(Candidate & can)
 			randit++;
 			copy_if(maybeinliers.begin(),maybeinliers.end(),back_inserter(alsoinliers),[&mayberico,&TH](DepthLine & line ){return std::abs(line.rico-mayberico)<TH;});
 			if(maybeinliers.size() == alsoinliers.size()){
+				ROS_INFO("all are inliers");
 				can.nmbrOfLines=alsoinliers.size();
 				break;
 			}
@@ -178,7 +142,7 @@ void LineReg::getParallelLines(Candidate & can)
 		}
 
 }
-void LineReg::get3DLines(Candidate & can, cv::Mat & curv_weight,cv::Mat & meanCurvature, float & fxi, float & fyi, float & cxi, float & cyi)
+void LineReg::get3DLines(Candidate & can,cv::Mat depthImg, cv::Mat curv_weight,cv::Mat meanCurvature, float & fxi, float & fyi, float & cxi, float & cyi)
 {
 ROS_INFO("getting lines");
 	//get points from lines and depthImage
@@ -218,17 +182,31 @@ ROS_INFO("getting lines");
 	can.lineInliers.insert(can.lineInliers.end(),it->inliers.begin(),it->inliers.end());
 	}
 }
-void LineReg::getPlane(Candidate & can)
+void LineReg::getPlane(Candidate & can, cv_bridge::CvImagePtr & cv_debug_ptr, const tum_ardrone::filter_stateConstPtr &poseMsg)
 {
-		if(can.lineInliers.empty())
-			return;
-		pcl::SampleConsensusModelPlane<pcl::PointXYZ>::Ptr model_p (new pcl::SampleConsensusModelPlane<pcl::PointXYZ> (can.cloud, can.lineInliers));
+	if(can.lineInliers.empty())
+		return;
+	pcl::PointCloud<pcl::PointXYZ> ekfcloud;
+	Eigen::Matrix4f trans =Eigen::Matrix4f::Identity();
+	Eigen::AngleAxisd rollAngle(poseMsg->roll, Eigen::Vector3d::UnitZ());
+	Eigen::AngleAxisd yawAngle(poseMsg->yaw, Eigen::Vector3d::UnitY());
+	Eigen::AngleAxisd pitchAngle(poseMsg->pitch, Eigen::Vector3d::UnitX());
 
-		pcl::RandomSampleConsensus<pcl::PointXYZ> ransac (model_p);
-		ransac.setDistanceThreshold (.01);
-		ransac.computeModel();
-		ransac.getInliers(can.planeInliers);
-		//pcl::PointCloud<pcl::PointXYZ>::Ptr plane(new pcl::PointCloud<pcl::PointXYZ>(*cloud,planeInliers));
+	Eigen::Quaternion<double> q = rollAngle * yawAngle * pitchAngle;
+	trans.block<3,3>(0,0) = q.matrix().cast<float>();
+	trans(0,3)=poseMsg->x;
+	trans(1,3)=poseMsg->y;
+	trans(2,3)=poseMsg->z;
+
+	pcl::transformPointCloud(*can.cloud,ekfcloud,trans);
+	pcl::SampleConsensusModelPlane<pcl::PointXYZ>::Ptr model_p (new pcl::SampleConsensusModelPlane<pcl::PointXYZ> (can.cloud, can.lineInliers));
+	Eigen::VectorXf coefficients;
+	pcl::RandomSampleConsensus<pcl::PointXYZ> ransac (model_p);
+	ransac.setDistanceThreshold (.01);
+	ransac.computeModel();
+	ransac.getInliers(can.planeInliers);
+	ransac.getModelCoefficients(coefficients);
+	//pcl::PointCloud<pcl::PointXYZ>::Ptr plane(new pcl::PointCloud<pcl::PointXYZ>(*cloud,planeInliers));
 	if(pub_det.getNumSubscribers() != 0)
 	{
 		for(size_t i=0 ; i < can.lines.size();i++)
@@ -239,60 +217,6 @@ void LineReg::getPlane(Candidate & can)
 		}
 	}
 }
-
-/*void LineReg::process(std::vector<cv::Rect> rectangles,std::vector<cv::Vec4f> lines, std::vector<float> quality,cv::Mat original)//objectdet,lsd
-{
-///
-/// \brief  Accepts the data of an image and copies the neccesary data to the adequate private variables.
-/// @param[in] good_lines set of lines that are detected on the visual image
-/// @param[in] quality vector indicating the quality of each line 
-///
-	boost::mutex::scoped_lock lock(dataMutex);
-	ROS_INFO_STREAM("received vision data");
-	lineQuality=quality;
-	candidates.clear();
-	depthLines.clear();
-	candidates.reserve(rectangles.size());
-	for_each(rectangles.begin(),rectangles.end(),[this](cv::Rect & rectangle){candidates.push_back(Candidate(rectangle));});
-	depthLines.reserve(lines.size());
-	for_each(lines.begin(),lines.end(),[this](cv::Vec4f & line ){depthLines.push_back(DepthLine(line));});
-	cv_debug_ptr->image=original;
-	rectangles_ready=true;
-	//notify thread
-	newData.notify_one();
-}
-void LineReg::process(cv::Mat CI,cv::Mat depthImgf,cv::Mat H, cv::Vec4f camera, const Eigen::Affine3f & pose )//depthproc
-{
-///
-/// \brief  Accepts the data of an image and copies the neccesary data to the adequate private variables.
-/// @param[in] CI matrix containing the curvature in each point
-/// @param[in] deptImgf filtered depth image
-/// @param[in] vector containing the intrinsic camera parameters
-/// 
-	boost::mutex::scoped_lock lock(dataMutex);
-	ROS_INFO_STREAM("received depth data");
-	fxi=1.0f/camera[0];
-	fyi=1.0f/camera[1];
-	cxi=-camera[2]*fxi;
-	cyi=-camera[3]*fyi;
-	depthImg=depthImgf;
-	meanCurvature = H;
-	cv::add(CI.mul(0.95f),0.05f,curv_weight);
-	campose=pose;
-	curvature_ready=true;
-	//notify thread
-	newData.notify_one();
-}*/
-/*bool LineReg::SegmentOutsideRectangles(cv::Vec4f &line)
-{
-	for(auto j=rectangles.begin();j!=rectangles.end();j++)
-	{
-		if(SegmentIntersectRectangle(*j, line))
-			return false;
-	}
-	return true;
-}*/
-
 bool LineReg::SegmentIntersectRectangle(cv::Rect& rectangle, cv::Vec4f& line)
 {
 double a_p1x = static_cast<double>(line[0]);

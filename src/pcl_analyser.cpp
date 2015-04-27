@@ -1,8 +1,7 @@
 #include "pointcloudregistration/pcl_analyser.h"
 #include "pointcloudregistration/KeyFrame.h"
-#include "pointcloudregistration/KeyFrameGraph.h"
+#include "pointcloudregistration/datastructures.h"
 #include "pointcloudregistration/settings.h"
-#include "pointcloudregistration/linereg.h"
 #include <Eigen/Geometry>
 #include "pcl/point_types.h"
 #include <pcl/common/transforms.h>
@@ -32,18 +31,13 @@ struct framedist{
 	bool operator<(const framedist& rhs) const
 		{return dist < rhs.dist;}
 };
-PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud), nh("~"),graph(keyGraph),it(nh),cv_depth_ptr(new cv_bridge::CvImage),cv_depthf_ptr(new cv_bridge::CvImage),cv_H_ptr(new cv_bridge::CvImage), cv_K_ptr(new cv_bridge::CvImage), cv_CI_ptr(new cv_bridge::CvImage)
+PCL_analyser::PCL_analyser(): nh("~"),it(nh),cv_depthf_ptr(new cv_bridge::CvImage),cv_H_ptr(new cv_bridge::CvImage), cv_K_ptr(new cv_bridge::CvImage), cv_CI_ptr(new cv_bridge::CvImage)
 {
 	pub_depth = it.advertise("depth",1);
 	pub_depthf = it.advertise("depth_filtered",1);
 	pub_curv = it.advertise("curvature",1);
 	pub_K = it.advertise("K",1);
 	pub_H = it.advertise("H",1);
-	wantExit=false;
-	data_ready=false;
-	//initiate depth image
-	cv_depth_ptr->encoding="mono16";
-	cv_depth_ptr->header.frame_id="ardrone_base_frontcam";
 	//initiate filtered depth image
 	cv_depthf_ptr->encoding="mono16";
 	cv_depthf_ptr->header.frame_id="ardrone_base_frontcam";
@@ -63,17 +57,11 @@ PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), dep
 }
 PCL_analyser::~PCL_analyser()
 {
-	//destroy thread
-	{
-		boost::mutex::scoped_lock lock(frameMutex);
-		wantExit=true;
-	}
-	//worker.join();
 	//dtor
 }
 
 
-void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, cv::UMat & filt, cv::UMat & H, cv::UMat & CI)
+void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::vector<KeyFrame*> & keyframes, cv::UMat & filt, cv::UMat & H, cv::UMat & CI)
 {
 		memcpy(camToWorld.data(), msg->camToWorld.data(), 7*sizeof(float));
 		my_scaleDepthImage= static_cast<int> (scaleDepthImage +0.5f);
@@ -83,27 +71,16 @@ void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, cv::UMa
 		fy=my_scaleDepthImage*msg->fy;
 		cx=my_scaleDepthImage*msg->cx;
 		cy=my_scaleDepthImage*msg->cy;
-		//depthImg.create(height,width,CV_32F);//reinitializes if needed
 		//copy header
 		header=msg->header;
-		data_ready=true;
 		ROS_INFO_STREAM("fx: "<< fx << ", fy: "<< fy << ", cx: "<< cx << ", cy: " << cy);
 		ROS_INFO("starting detection loop");
 		cv::Mat depthImg(height,width,CV_32F);
-		getDepthImage(depthImg);
+		getDepthImage(keyframes, depthImg);
 		filterDepth(depthImg,filt);
 		calcCurvature(filt,H,CI);
-		/*cv::Vec4f camera;
-		camera[0]=fx/my_scaleDepthImage;
-		camera[1]=fy/my_scaleDepthImage;
-		camera[2]=cx/my_scaleDepthImage;
-		camera[3]=cy/my_scaleDepthImage;
-		Eigen::Affine3f trans;
-		trans=camToWorld.matrix();
-		stairs->process(CI.getMat(cv::ACCESS_READ),filt.getMat(cv::ACCESS_READ).clone(),H.getMat(cv::ACCESS_READ).clone(),camera,trans);*/
-
 }
-void PCL_analyser::getDepthImage(cv::Mat & depthImg)
+void PCL_analyser::getDepthImage(std::vector<KeyFrame*> & keyframes, cv::Mat & depthImg)
 {
 ///
 /// \brief Generates a depth image from the received keyframes
@@ -112,20 +89,16 @@ void PCL_analyser::getDepthImage(cv::Mat & depthImg)
 /// coordinates in the liveframe axes. This set of accumulated points is then projected using the camera parameters
 /// to get a depth image that corresponds with the image captured by camera.
 ///
-	std::vector<KeyFrame*> keyframes = graph->getFrames();
+
 	int x,y;
-	boost::mutex::scoped_lock lock(cloudMtx);
-	cloud->clear();
+    	PointCloud::Ptr cloud, depth;
 	depthImg.setTo(maxZ);
 	//need to insert function that calculates clouds that are in region of interest
-	//select randomly
-	std::random_shuffle(keyframes.begin(),keyframes.end());
-	//int k=0;
 	std::vector<framedist> mykeyframes;
-
-	for(std::size_t i=0;i<keyframes.size();i++)
+	mykeyframes.reserve(keyframes.size());
+	for(auto frame:keyframes)
 	{
-		mykeyframes.push_back(framedist(keyframes[i],camToWorld));
+		mykeyframes.push_back(framedist(frame,camToWorld));
 	}
 	std::sort(mykeyframes.begin(),mykeyframes.end());
 	int k = std::min(10,static_cast<int>(mykeyframes.size()));
@@ -148,7 +121,7 @@ void PCL_analyser::getDepthImage(cv::Mat & depthImg)
 ROS_INFO_STREAM("acumulating "<< k << "clouds took "<< std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() <<" milisecond(s).");
  	assert(width == depthImg.cols && height == depthImg.rows);
 t1 = std::chrono::high_resolution_clock::now();
-	for(PointCloud::iterator it = cloud->begin(); it != cloud->end(); it++){ 
+	for(auto it = cloud->begin(); it != cloud->end(); it++){ 
 		if(it->z>maxZ|| it->z<minZ)
 			continue;
 		x=static_cast<int> ((fx*(it->x)/(it->z)+cx)+0.5f);
@@ -163,66 +136,11 @@ t2 = std::chrono::high_resolution_clock::now();
 ROS_INFO_STREAM("projection took "<<  std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() <<" milisecond(s).");
 	if (!pub_depth.getNumSubscribers())
 		return;
-	depthImg.convertTo(cv_depth_ptr->image,CV_16UC1,1000);
-	cv_depth_ptr->header.stamp=header.stamp;
-	pub_depth.publish(cv_depth_ptr->toImageMsg());
+	cv::Mat nidepth;
+	depthImg.convertTo(nidepth,CV_16UC1,1000);
+	cv_bridge::CvImage cv_depth(header,"mono16", nidepth);
+	pub_depth.publish(cv_depth.toImageMsg());
 }
-/*void PCL_analyser::process(lsd_slam_viewer::keyframeMsgConstPtr msg)
-{
-///
-/// \brief  Accepts the data of a liveframe message and copies the neccesary data to the adequate private variables.
-/// @param[in] msg a liveframe message
-/// 
-	{
-		boost::mutex::scoped_lock lock(frameMutex);
-		memcpy(camToWorld.data(), msg->camToWorld.data(), 7*sizeof(float));
-		my_scaleDepthImage= static_cast<int> (scaleDepthImage +0.5f);
-		width=my_scaleDepthImage*msg->width;
-		height=my_scaleDepthImage*msg->height;
-		fx=my_scaleDepthImage*msg->fx;
-		fy=my_scaleDepthImage*msg->fy;
-		cx=my_scaleDepthImage*msg->cx;
-		cy=my_scaleDepthImage*msg->cy;
-		depthImg.create(height,width,CV_32F);//reinitializes if needed
-		//copy header
-		header=msg->header;
-		data_ready=true;
-		ROS_INFO_STREAM("fx: "<< fx << ", fy: "<< fy << ", cx: "<< cx << ", cy: " << cy);
-	}
-	//notify thread
-	newData.notify_one();
-}*/
-/*void PCL_analyser::threadLoop()
-{
-///
-/// \brief This method is started in a different thread and waits for data. Upon reception of new data the methods
-/// PCL_analyser::getDepthImage(), PCL_analyser::filterDepth() and PCL_analyser::calcCurvature() are called.
-///
-	ROS_INFO("pcl analyser thread started");
-	while(true)
-	{
-		boost::mutex::scoped_lock lock(frameMutex);
-		while(!data_ready)//check if new message passed
-		{
-			newData.wait(lock);
-		}
-		data_ready=false;
-		if(wantExit)
-			return;
-		ROS_INFO("starting detection loop");
-		getDepthImage();
-		filterDepth();
-		calcCurvature();
-		cv::Vec4f camera;
-		camera[0]=fx/my_scaleDepthImage;
-		camera[1]=fy/my_scaleDepthImage;
-		camera[2]=cx/my_scaleDepthImage;
-		camera[3]=cy/my_scaleDepthImage;
-		Eigen::Affine3f trans;
-		trans=camToWorld.matrix();
-		stairs->process(CI.getMat(cv::ACCESS_READ),filt.getMat(cv::ACCESS_READ).clone(),H.getMat(cv::ACCESS_READ).clone(),camera,trans);
-	}
-}*/
 void PCL_analyser::filterDepth(cv::Mat & depthImg, cv::UMat & filt)
 {
 ///
@@ -375,17 +293,4 @@ void PCL_analyser::writeHist(float min, float max, int bins,cv::UMat CI)
          }
 	myfile<< std::endl;
 	myfile.close();
-}
-bool PCL_analyser::ready()
-{
-///
-/// \brief Checks if the frameMutex is still locked and thus the worker thread still occupied with the previous task.
-///
-	boost::mutex::scoped_lock lock(frameMutex, boost::try_to_lock);
-	if(lock)
-	{
-		return true;
-	}else{
-		return false;
-	}
 }

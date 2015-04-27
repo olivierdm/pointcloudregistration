@@ -9,37 +9,26 @@
 #include <Eigen/Core>
 #include "pcl_ros/point_cloud.h"
 #include "pcl/point_types.h"
-#include <boost/thread.hpp>
-#include "pointcloudregistration/datastructures.h"
 #include <cv_bridge/cv_bridge.h>
-class KeyFrameGraph;
+class KeyFrame;
 class PCL_analyser
 {
     public:
-        PCL_analyser(KeyFrameGraph*);
+        PCL_analyser();
         virtual ~PCL_analyser();
-			void operator()(lsd_slam_viewer::keyframeMsgConstPtr, cv::UMat&, cv::UMat&, cv::UMat&);
-	//void process(lsd_slam_viewer::keyframeMsgConstPtr);
-	bool ready();
-    protected:
+	void operator()(lsd_slam_viewer::keyframeMsgConstPtr, std::vector<KeyFrame*>&, cv::UMat&, cv::UMat&, cv::UMat&);
     private:
-    	PointCloud::Ptr cloud, depth;
 	ros::NodeHandle nh;
-	KeyFrameGraph* graph;
 	image_transport::ImageTransport it;
 	image_transport::Publisher pub_depth,pub_depthf,pub_curv,pub_K,pub_H;
-	boost::condition_variable newData,openCVdisplaySignal;
 	//boost::thread worker;
-	boost::mutex frameMutex,cloudMtx;
 	Sophus::Sim3f camToWorld;
 	void calcCurvature(const cv::UMat&, cv::UMat & ,cv::UMat & );
 	int width, height;
-	cv_bridge::CvImagePtr cv_depth_ptr, cv_depthf_ptr,cv_H_ptr,cv_K_ptr,cv_CI_ptr;
-	bool wantExit,data_ready;
+	cv_bridge::CvImagePtr cv_depthf_ptr,cv_H_ptr,cv_K_ptr,cv_CI_ptr;
 	//camera parameters
 	float fx,fy,cx,cy;
-	void getDepthImage(cv::Mat&);
-	//void threadLoop();
+	void getDepthImage(std::vector<KeyFrame*>&, cv::Mat&);
 	void filterDepth(cv::Mat &, cv::UMat &);
 	void writeHist(float,float,int,cv::UMat);
 	std::vector<KeyFrame*> keyframes;

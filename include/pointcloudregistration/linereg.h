@@ -17,10 +17,7 @@ class LineReg
     public:
         LineReg(PCL_registration*);
         virtual ~LineReg();
-	//void process(cv::Mat,cv::Mat,cv::Mat,cv::Vec4f, const Eigen::Affine3f &);
-	//void process(std::vector<cv::Rect>,std::vector<cv::Vec4f> lines, std::vector<float> quality,cv::Mat);
-	void operator()(cv::UMat&, cv::UMat&, cv::UMat&, std::vector<cv::Rect>&, std::vector<cv::Vec4f>&, const sensor_msgs::ImageConstPtr&, const lsd_slam_viewer::keyframeMsgConstPtr&, const tum_ardrone::filter_stateConstPtr&);
-	//bool ready();
+	void operator()(cv::UMat&, cv::UMat&, cv::UMat&, std::vector<cv::Rect>&, std::vector<cv::Vec4f>&, cv_bridge::CvImagePtr &, const lsd_slam_viewer::keyframeMsgConstPtr&, const tum_ardrone::filter_stateConstPtr&);
 	bool SegmentIntersectRectangle(cv::Rect&, cv::Vec4f&);
     protected:
     private:
@@ -28,21 +25,13 @@ class LineReg
 	ros::NodeHandle nh;
 	image_transport::ImageTransport it;
 	image_transport::Publisher pub_det;
-	cv_bridge::CvImagePtr cv_debug_ptr;
-	bool wantExit,rectangles_ready,curvature_ready;
 	std::vector<float> lineQuality;
 	std::vector<DepthLine> depthLines;
 	std::vector<Candidate> candidates;
 	boost::mutex dataMutex;
-	//boost::thread worker;
 	void getParallelLines(Candidate &);
-	void get3DLines(Candidate &, cv::Mat&, cv::Mat&, float&, float&, float&, float&);
-	void getPlane(Candidate &);
-	//bool SegmentIntersectRectangle(cv::Rect&, cv::Vec4f&);
-
-	boost::condition_variable newData;
-	//void threadLoop();
-	cv::Mat depthImg;
+	void get3DLines(Candidate &, cv::Mat, cv::Mat, cv::Mat, float&, float&, float&, float&);
+	void getPlane(Candidate &, cv_bridge::CvImagePtr&, const tum_ardrone::filter_stateConstPtr&);
 	Eigen::Affine3f campose;
 };
 

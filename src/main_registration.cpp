@@ -3,6 +3,7 @@
 */
 #include "ros/ros.h"
 #include <ros/callback_queue.h>
+#include <sensor_msgs/image_encodings.h>
 #include <image_transport/image_transport.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
@@ -25,8 +26,11 @@ KeyFrameGraph* graph=0;
 Vision* visor=0;
 LineReg* stairs=0;
 tbb::task_group g;
+cv::UMat depthImg, H, CI;
+std::vector<cv::Rect> rectangles;
+std::vector<cv::Vec4f> lines;
+cv_bridge::CvImagePtr cv_input_ptr;
 bool firstKF=false;
-
 void frameCb(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
 	if(msg->time > lastFrameTime || registrar == 0 ) return;
@@ -42,17 +46,24 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 {
 	if(pcl_analyse==0 || visor==0||!firstKF)
 		return;
-	cv::UMat depthImg, H, CI;
+
 	//pass the data and do processing
 	ROS_INFO("in callback");
+	std::vector<KeyFrame*> keyframes = graph->getFrames();
+	g.run([&]{(*pcl_analyse)(frameMsg, keyframes, depthImg, H, CI);});
+	try
+	{
+		cv_input_ptr = cv_bridge::toCvCopy(imgMsg, sensor_msgs::image_encodings::BGR8);
+	}
+	catch (cv_bridge::Exception& e)
+	{
+		ROS_ERROR("cv_bridge exception: %s", e.what());
+		return;
+	}
+	(*visor)(cv_input_ptr,poseMsg, rectangles, lines);
 	g.wait();
-	g.run([&]{(*pcl_analyse)(frameMsg, depthImg, H, CI);});
-	std::vector<cv::Rect> rectangles;
-        std::vector<cv::Vec4f> lines;
-	(*visor)(imgMsg,poseMsg, rectangles, lines);
-	g.wait();
-(*stairs)(depthImg, H, CI, rectangles, lines, imgMsg, frameMsg, poseMsg);
-	//g.run([&]{(*stairs)(depthImg, H, CI, rectangles, lines, imgMsg, frameMsg, poseMsg);});
+	(*stairs)(depthImg, H, CI, rectangles, lines, cv_input_ptr, frameMsg, poseMsg);
+
 	//pcl_analyse->process(frameMsg);
 }
 
@@ -65,8 +76,8 @@ int main( int argc, char** argv )
 	graph = new KeyFrameGraph();
 	registrar = new PCL_registration(graph);
 	stairs = new LineReg(registrar);
-	visor = new Vision(stairs);
-	pcl_analyse = new PCL_analyser(graph);
+	visor = new Vision();
+	pcl_analyse = new PCL_analyser();
 
 	ros::CallbackQueue lsdqueue;
 	ros::NodeHandle lsdhandler;
@@ -84,8 +95,8 @@ int main( int argc, char** argv )
 	message_filters::Subscriber<lsd_slam_viewer::keyframeMsg> liveFrames_sub(processhandler,processhandler.resolveName("lsd_slam/liveframes"), 1);
 	message_filters::Subscriber<tum_ardrone::filter_state> pose_sub(processhandler,processhandler.resolveName("/ardrone/predictedPose"),1);
 	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, lsd_slam_viewer::keyframeMsg, tum_ardrone::filter_state> MySyncPolicy;
-	//ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
-	message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(2), image_sub, liveFrames_sub, pose_sub);
+	//ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(1), only realtime
+	message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(1), image_sub, liveFrames_sub, pose_sub);
 	sync.registerCallback(boost::bind(&callback, _1, _2,_3));
 	ros::AsyncSpinner processspinner(1, &processqueue);
 	processspinner.start();
