@@ -74,7 +74,6 @@ void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::ve
 		//copy header
 		header=msg->header;
 		ROS_INFO_STREAM("fx: "<< fx << ", fy: "<< fy << ", cx: "<< cx << ", cy: " << cy);
-		ROS_INFO("starting detection loop");
 		cv::Mat depthImg(height,width,CV_32F);
 		getDepthImage(keyframes, depthImg);
 		filterDepth(depthImg,filt);
@@ -91,7 +90,7 @@ void PCL_analyser::getDepthImage(std::vector<KeyFrame*> & keyframes, cv::Mat & d
 ///
 
 	int x,y;
-    	PointCloud::Ptr cloud, depth;
+    	PointCloud::Ptr cloud(new PointCloud), depth(new PointCloud);
 	depthImg.setTo(maxZ);
 	//need to insert function that calculates clouds that are in region of interest
 	std::vector<framedist> mykeyframes;
