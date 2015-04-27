@@ -13,43 +13,39 @@
 #include "pointcloudregistration/datastructures.h"
 #include <cv_bridge/cv_bridge.h>
 class KeyFrameGraph;
-class LineReg;
 class PCL_analyser
 {
     public:
-        PCL_analyser(KeyFrameGraph*,LineReg*);
+        PCL_analyser(KeyFrameGraph*);
         virtual ~PCL_analyser();
-			void operator()(lsd_slam_viewer::keyframeMsgConstPtr);
-	void process(lsd_slam_viewer::keyframeMsgConstPtr);
+			void operator()(lsd_slam_viewer::keyframeMsgConstPtr, cv::UMat&, cv::UMat&, cv::UMat&);
+	//void process(lsd_slam_viewer::keyframeMsgConstPtr);
 	bool ready();
     protected:
     private:
     	PointCloud::Ptr cloud, depth;
 	ros::NodeHandle nh;
 	KeyFrameGraph* graph;
-	LineReg* stairs;
 	image_transport::ImageTransport it;
 	image_transport::Publisher pub_depth,pub_depthf,pub_curv,pub_K,pub_H;
 	boost::condition_variable newData,openCVdisplaySignal;
-	boost::thread worker;
+	//boost::thread worker;
 	boost::mutex frameMutex,cloudMtx;
 	Sophus::Sim3f camToWorld;
-	void calcCurvature();
+	void calcCurvature(const cv::UMat&, cv::UMat & ,cv::UMat & );
 	int width, height;
 	cv_bridge::CvImagePtr cv_depth_ptr, cv_depthf_ptr,cv_H_ptr,cv_K_ptr,cv_CI_ptr;
 	bool wantExit,data_ready;
-	cv::UMat CI,H,filt;
 	//camera parameters
 	float fx,fy,cx,cy;
-	void getDepthImage();
-	void threadLoop();
-	void filterDepth();
+	void getDepthImage(cv::Mat&);
+	//void threadLoop();
+	void filterDepth(cv::Mat &, cv::UMat &);
 	void writeHist(float,float,int,cv::UMat);
 	std::vector<KeyFrame*> keyframes;
 	std_msgs::Header header;
 	Eigen::Matrix4f soph;
 	int my_scaleDepthImage;
-	cv::Mat depthImg;
 	sensor_msgs::ImagePtr msg;
 };
 

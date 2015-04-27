@@ -42,15 +42,17 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 {
 	if(pcl_analyse==0 || visor==0||!firstKF)
 		return;
-	//check if both are ready
-	/*if(!(visor->ready()) || !(pcl_analyse->ready()))
-		return;*/
+	cv::UMat depthImg, H, CI;
 	//pass the data and do processing
 	ROS_INFO("in callback");
-	//visor->process(imgMsg,poseMsg);
-	g.run([&imgMsg,&poseMsg]{(*visor)(imgMsg,poseMsg);});
-	g.run([&frameMsg]{(*pcl_analyse)(frameMsg);});
 	g.wait();
+	g.run([&]{(*pcl_analyse)(frameMsg, depthImg, H, CI);});
+	std::vector<cv::Rect> rectangles;
+        std::vector<cv::Vec4f> lines;
+	(*visor)(imgMsg,poseMsg, rectangles, lines);
+	g.wait();
+(*stairs)(depthImg, H, CI, rectangles, lines, imgMsg, frameMsg, poseMsg);
+	//g.run([&]{(*stairs)(depthImg, H, CI, rectangles, lines, imgMsg, frameMsg, poseMsg);});
 	//pcl_analyse->process(frameMsg);
 }
 
@@ -64,7 +66,7 @@ int main( int argc, char** argv )
 	registrar = new PCL_registration(graph);
 	stairs = new LineReg(registrar);
 	visor = new Vision(stairs);
-	pcl_analyse = new PCL_analyser(graph,stairs);
+	pcl_analyse = new PCL_analyser(graph);
 
 	ros::CallbackQueue lsdqueue;
 	ros::NodeHandle lsdhandler;

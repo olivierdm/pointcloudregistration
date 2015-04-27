@@ -32,7 +32,7 @@ struct framedist{
 	bool operator<(const framedist& rhs) const
 		{return dist < rhs.dist;}
 };
-PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph,LineReg* stair): cloud (new PointCloud), depth(new PointCloud), nh("~"),graph(keyGraph), stairs(stair),it(nh),cv_depth_ptr(new cv_bridge::CvImage),cv_depthf_ptr(new cv_bridge::CvImage),cv_H_ptr(new cv_bridge::CvImage), cv_K_ptr(new cv_bridge::CvImage), cv_CI_ptr(new cv_bridge::CvImage)
+PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph): cloud (new PointCloud), depth(new PointCloud), nh("~"),graph(keyGraph),it(nh),cv_depth_ptr(new cv_bridge::CvImage),cv_depthf_ptr(new cv_bridge::CvImage),cv_H_ptr(new cv_bridge::CvImage), cv_K_ptr(new cv_bridge::CvImage), cv_CI_ptr(new cv_bridge::CvImage)
 {
 	pub_depth = it.advertise("depth",1);
 	pub_depthf = it.advertise("depth_filtered",1);
@@ -57,7 +57,7 @@ PCL_analyser::PCL_analyser(KeyFrameGraph* keyGraph,LineReg* stair): cloud (new P
 	cv_CI_ptr->encoding="mono16";
 	cv_CI_ptr->header.frame_id="curvature";
 	//create thread
-	worker = boost::thread(boost::bind(&PCL_analyser::threadLoop,this));
+	//worker = boost::thread(boost::bind(&PCL_analyser::threadLoop,this));
 
 	//ctor
 }
@@ -67,14 +67,13 @@ PCL_analyser::~PCL_analyser()
 	{
 		boost::mutex::scoped_lock lock(frameMutex);
 		wantExit=true;
-		newData.notify_one();
 	}
-	worker.join();
+	//worker.join();
 	//dtor
 }
 
 
-void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg)
+void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, cv::UMat & filt, cv::UMat & H, cv::UMat & CI)
 {
 		memcpy(camToWorld.data(), msg->camToWorld.data(), 7*sizeof(float));
 		my_scaleDepthImage= static_cast<int> (scaleDepthImage +0.5f);
@@ -84,26 +83,27 @@ void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg)
 		fy=my_scaleDepthImage*msg->fy;
 		cx=my_scaleDepthImage*msg->cx;
 		cy=my_scaleDepthImage*msg->cy;
-		depthImg.create(height,width,CV_32F);//reinitializes if needed
+		//depthImg.create(height,width,CV_32F);//reinitializes if needed
 		//copy header
 		header=msg->header;
 		data_ready=true;
 		ROS_INFO_STREAM("fx: "<< fx << ", fy: "<< fy << ", cx: "<< cx << ", cy: " << cy);
 		ROS_INFO("starting detection loop");
-		getDepthImage();
-		filterDepth();
-		calcCurvature();
-		cv::Vec4f camera;
+		cv::Mat depthImg(height,width,CV_32F);
+		getDepthImage(depthImg);
+		filterDepth(depthImg,filt);
+		calcCurvature(filt,H,CI);
+		/*cv::Vec4f camera;
 		camera[0]=fx/my_scaleDepthImage;
 		camera[1]=fy/my_scaleDepthImage;
 		camera[2]=cx/my_scaleDepthImage;
 		camera[3]=cy/my_scaleDepthImage;
 		Eigen::Affine3f trans;
 		trans=camToWorld.matrix();
-		stairs->process(CI.getMat(cv::ACCESS_READ),filt.getMat(cv::ACCESS_READ).clone(),H.getMat(cv::ACCESS_READ).clone(),camera,trans);
+		stairs->process(CI.getMat(cv::ACCESS_READ),filt.getMat(cv::ACCESS_READ).clone(),H.getMat(cv::ACCESS_READ).clone(),camera,trans);*/
 
 }
-void PCL_analyser::getDepthImage()
+void PCL_analyser::getDepthImage(cv::Mat & depthImg)
 {
 ///
 /// \brief Generates a depth image from the received keyframes
@@ -167,7 +167,7 @@ ROS_INFO_STREAM("projection took "<<  std::chrono::duration_cast<std::chrono::mi
 	cv_depth_ptr->header.stamp=header.stamp;
 	pub_depth.publish(cv_depth_ptr->toImageMsg());
 }
-void PCL_analyser::process(lsd_slam_viewer::keyframeMsgConstPtr msg)
+/*void PCL_analyser::process(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
 ///
 /// \brief  Accepts the data of a liveframe message and copies the neccesary data to the adequate private variables.
@@ -191,8 +191,8 @@ void PCL_analyser::process(lsd_slam_viewer::keyframeMsgConstPtr msg)
 	}
 	//notify thread
 	newData.notify_one();
-}
-void PCL_analyser::threadLoop()
+}*/
+/*void PCL_analyser::threadLoop()
 {
 ///
 /// \brief This method is started in a different thread and waits for data. Upon reception of new data the methods
@@ -222,8 +222,8 @@ void PCL_analyser::threadLoop()
 		trans=camToWorld.matrix();
 		stairs->process(CI.getMat(cv::ACCESS_READ),filt.getMat(cv::ACCESS_READ).clone(),H.getMat(cv::ACCESS_READ).clone(),camera,trans);
 	}
-}
-void PCL_analyser::filterDepth()
+}*/
+void PCL_analyser::filterDepth(cv::Mat & depthImg, cv::UMat & filt)
 {
 ///
 /// \brief applies required filtering and resizes the image back to the original size.
@@ -243,7 +243,7 @@ void PCL_analyser::filterDepth()
 	cv_depthf_ptr->header.stamp=header.stamp;
 	pub_depthf.publish(cv_depthf_ptr->toImageMsg());
 }
-void PCL_analyser::calcCurvature()
+void PCL_analyser::calcCurvature(const cv::UMat & filt, cv::UMat & H, cv::UMat & CI)
 {
 ///
 /// \brief calc the curvature using the constructed depth image.

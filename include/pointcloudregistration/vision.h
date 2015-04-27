@@ -14,9 +14,9 @@ class Vision
     public:
         Vision(LineReg*);
         virtual ~Vision();
-	void process(const sensor_msgs::ImageConstPtr&,const tum_ardrone::filter_stateConstPtr&);
-	bool ready();
-	void operator()(const sensor_msgs::ImageConstPtr&, const tum_ardrone::filter_stateConstPtr&);
+	//void process(const sensor_msgs::ImageConstPtr&,const tum_ardrone::filter_stateConstPtr&);
+	//bool ready();
+	void operator()(const sensor_msgs::ImageConstPtr&, const tum_ardrone::filter_stateConstPtr&, std::vector<cv::Rect>&, std::vector<cv::Vec4f>&);
     protected:
     private:
 	std::string stair_cascade_name;
@@ -26,19 +26,17 @@ class Vision
 	image_transport::ImageTransport it;
 	image_transport::Publisher pub_lsd, pub_detect;
 	cv::Ptr<cv::LineSegmentDetector> ls;
-	cv_bridge::CvImagePtr cv_input_ptr,cv_lsd_ptr,cv_det_ptr;
+	cv_bridge::CvImagePtr cv_lsd_ptr,cv_det_ptr;
 	bool wantExit,data_ready;
-	std::vector<cv::Rect> rectangles;
 	cv::Mat InputGray;
 	//use std::vector<cv::Vec4i> for older implementations
-        std::vector<cv::Vec4f> lines;
 	std::vector<float> quality;
 	boost::mutex imageMutex;
-	boost::thread worker;
-	void getLines();
-	void detect();
+	//boost::thread worker;
+	void getLines(cv_bridge::CvImagePtr &, std::vector<cv::Vec4f>&);
+	void detect(cv_bridge::CvImagePtr &, std::vector<cv::Rect>&);
 	boost::condition_variable newData;
-	void threadLoop();
+	//void threadLoop();
 	tum_ardrone::filter_stateConstPtr pose;
 };
 
