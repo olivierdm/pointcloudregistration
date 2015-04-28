@@ -1,0 +1,16 @@
+<launch>
+
+<node ns="/ardrone/front" name="Image_Rectifier_Node" pkg="image_proc" type="image_proc">
+</node>
+
+<node name="lsd_slam_viewer" pkg="lsd_slam_viewer" type="viewer" output="screen"></node>
+
+<node name="lsd_slam_core" pkg="lsd_slam_core" type="live_slam">
+	<remap from="image" to="/ardrone/front/image_rect" />
+	<remap from="camera_info" to="/ardrone/front/camera_info" />
+	<param name="minUseGrad" value="15" />
+	<param name="cameraPixelNoise" value="30" />
+</node>
+
+</launch>
+

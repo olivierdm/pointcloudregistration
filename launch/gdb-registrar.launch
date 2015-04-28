@@ -5,7 +5,7 @@
 
 <!-- <node name="lsd_slam_viewer" pkg="lsd_slam_viewer" type="viewer" output="screen"></node> -->
 
-<node name="lsd_slam_core" pkg="lsd_slam_core" type="live_slam">
+<node name="lsd_slam_core" pkg="lsd_slam_core" type="live_slam" launch-prefix="xterm -e gdb -ex run --args">
 	<remap from="image" to="/ardrone/front/image_rect" />
 	<remap from="camera_info" to="/ardrone/front/camera_info" />
 	<param name="minUseGrad" value="15" />
