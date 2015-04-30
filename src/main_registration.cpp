@@ -49,7 +49,7 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 
 	//pass the data and do processing
 	ROS_INFO("in callback");
-	std::vector<KeyFrame*> keyframes = graph->getFrames();
+	std::vector<std::shared_ptr<KeyFrame>> keyframes = graph->getFrames();
 	g.run([&]{(*pcl_analyse)(frameMsg, keyframes, depthImg, H, CI);});
 	try
 	{
@@ -75,15 +75,16 @@ int main( int argc, char** argv )
 	//rosThread = boost::thread(rosThreadLoop);
 	graph = new KeyFrameGraph();
 	registrar = new PCL_registration(graph);
-	stairs = new LineReg(registrar);
+	stairs = new LineReg();
 	visor = new Vision();
 	pcl_analyse = new PCL_analyser();
 
 	ros::CallbackQueue lsdqueue;
 	ros::NodeHandle lsdhandler;
 	lsdhandler.setCallbackQueue(&lsdqueue);
-	ros::Subscriber keyFrames_sub = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/keyframes"),5, frameCb);
-	ros::Subscriber graph_sub  = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/graph"),1, graphCb);
+	ros::Subscriber keyFrames_sub = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/keyframes"), 20, frameCb);
+	ros::Subscriber liveFrames_subl = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/liveframes"), 1, frameCb);	
+	ros::Subscriber graph_sub  = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/graph"), 10, graphCb);
 	ros::AsyncSpinner lsdspinner(1, &lsdqueue);
 	lsdspinner.start();
 

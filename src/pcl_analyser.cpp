@@ -17,14 +17,14 @@
 
 
 struct framedist{
-	framedist(KeyFrame* key,Sophus::Sim3f camToWorld):frame(key),camcenter(0.0f,0.0f,1.0f,1.0f)
+	framedist(std::shared_ptr<KeyFrame>& key,Sophus::Sim3f& camToWorld):frame(key),camcenter(0.0f,0.0f,1.0f,1.0f)
 	{
 		soph = (camToWorld.inverse()*frame->camToWorld).matrix();
 		camcenterlive = soph*camcenter;
 		dist=(camcenterlive-camcenter).squaredNorm();
 		
 	}
-	KeyFrame* frame;
+	std::shared_ptr<KeyFrame> frame;
 	Eigen::Vector4f camcenter,camcenterlive;
 	float dist;
 	Eigen::Matrix4f soph;
@@ -61,7 +61,7 @@ PCL_analyser::~PCL_analyser()
 }
 
 
-void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::vector<KeyFrame*> & keyframes, cv::UMat & filt, cv::UMat & H, cv::UMat & CI)
+void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::vector<std::shared_ptr<KeyFrame>> & keyframes, cv::UMat & filt, cv::UMat & H, cv::UMat & CI)
 {
 		memcpy(camToWorld.data(), msg->camToWorld.data(), 7*sizeof(float));
 		my_scaleDepthImage= static_cast<int> (scaleDepthImage +0.5f);
@@ -79,7 +79,7 @@ void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::ve
 		filterDepth(depthImg,filt);
 		calcCurvature(filt,H,CI);
 }
-void PCL_analyser::getDepthImage(std::vector<KeyFrame*> & keyframes, cv::Mat & depthImg)
+void PCL_analyser::getDepthImage(std::vector<std::shared_ptr<KeyFrame>> & keyframes, cv::Mat & depthImg)
 {
 ///
 /// \brief Generates a depth image from the received keyframes
@@ -111,7 +111,6 @@ void PCL_analyser::getDepthImage(std::vector<KeyFrame*> & keyframes, cv::Mat & d
 	{
 		//get keyframe in analysed keyframe
 		pcl::transformPointCloud(*mykeyframes[i].frame->getPCL(),*depth,mykeyframes[i].soph);
-		mykeyframes[i].frame->release();
 		*cloud+=*depth;
 		ROS_INFO_STREAM("cloud: "<< mykeyframes[i].frame->id);
 	}

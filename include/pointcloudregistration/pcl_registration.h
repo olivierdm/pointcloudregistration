@@ -27,7 +27,9 @@ class PCL_registration
 	pcl::PointCloud<pcl::PointXYZ>::Ptr planeCloud;
 	boost::thread visualiser;
 	void visualiserThread();
-	bool wantExit,newPlane;
+	void eraseClouds();
+	bool wantExit, newPlane, resetRequested;
+	int lastid;
 	Eigen::Affine3f campose;
 };
 

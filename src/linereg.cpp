@@ -1,6 +1,7 @@
 #include "pointcloudregistration/linereg.h"
 #include "pointcloudregistration/settings.h"
 #include <pcl/filters/extract_indices.h>
+#include <ros/ros.h>
 #include <sensor_msgs/image_encodings.h>
 #include <Eigen/Geometry>
 #include <pcl/common/transforms.h>
@@ -11,6 +12,8 @@
 #include "tbb/parallel_for_each.h"
 #include <cmath>        // std::abs
 #include <iterator>     // std::back_inserter
+#include <sstream>      // std::stringstream, std::stringbuf
+
 
 struct DepthLine
 {
@@ -35,15 +38,17 @@ struct Candidate
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud;
 	std::vector<DepthLine> lines;
 	float bestMSE;
+	float angle;
 	int nmbrOfLines;
+	float lineratio;
+	float planeratio;
 	std::vector<int> lineInliers;
 	std::vector<int> planeInliers;
 };
-LineReg::LineReg(PCL_registration* reg):registrar(reg),nh("~"),it(nh)
+LineReg::LineReg(): nh("~"),it(nh)
 {
 	pub_det = it.advertise("lines_curv",1);
-	/*cv_debug_ptr->encoding="bgr8";
-	cv_debug_ptr->header.frame_id="line_segment";*/
+	pub_can = it.advertise("candidates",1);
 //ctor
 }
 
@@ -70,6 +75,7 @@ void LineReg::operator()(cv::UMat & depthImg, cv::UMat &  H, cv::UMat & CI, std:
 	for_each(lines.begin(),lines.end(),[this](cv::Vec4f & line ){depthLines.push_back(DepthLine(line));});
 	//copy the msg to a cv::Mat instance
 	cv_bridge::CvImagePtr cv_debug_ptr(new cv_bridge::CvImage(cv_input_ptr->header,"bgr8",cv_input_ptr->image.clone()));
+	cv_bridge::CvImagePtr cv_can_ptr(new cv_bridge::CvImage(cv_input_ptr->header,"bgr8",cv_input_ptr->image.clone()));
 	cv::UMat curv_weight;
 	cv::add(CI.mul(0.95f),0.05f,curv_weight);
 	float fxi=1.0f/frameMsg->fx;
@@ -81,10 +87,12 @@ tbb::parallel_for_each(candidates.begin(),candidates.end(),[&](Candidate & can){
 		if(can.nmbrOfLines==0)
 			return;
 		get3DLines(can, depthImg.getMat(cv::ACCESS_READ), curv_weight.getMat(cv::ACCESS_READ), H.getMat(cv::ACCESS_READ), fxi, fyi, cxi, cyi);
-		getPlane(can, cv_debug_ptr, poseMsg);
+		getPlane(can, cv_debug_ptr, cv_can_ptr, poseMsg);
 		ROS_INFO("process candidate");});
 	if(pub_det.getNumSubscribers() != 0)
 		pub_det.publish(cv_debug_ptr->toImageMsg());
+	if(pub_can.getNumSubscribers() != 0)
+		pub_can.publish(cv_can_ptr->toImageMsg());
 }
 void LineReg::getParallelLines(Candidate & can)
 {
@@ -113,16 +121,21 @@ void LineReg::getParallelLines(Candidate & can)
 			float mayberico = randit->rico;
 			randit++;
 			copy_if(maybeinliers.begin(),maybeinliers.end(),back_inserter(alsoinliers),[&mayberico,&TH](DepthLine & line ){return std::abs(line.rico-mayberico)<TH;});
-			if(maybeinliers.size() == alsoinliers.size()){
-				ROS_INFO("all are inliers");
-				can.nmbrOfLines=alsoinliers.size();
-				break;
-			}
+
 			float sum = accumulate(alsoinliers.begin(),alsoinliers.end(),0.0f,[](float result, DepthLine& line){return result+line.rico;});
 			float modelrico = sum/alsoinliers.size();
 			float SSE= accumulate(alsoinliers.begin(),alsoinliers.end(),0.0f,[&modelrico](float result, DepthLine line){return result+pow(line.rico-modelrico,2);});
 			float MSE=SSE/alsoinliers.size();
-			if(alsoinliers.size()>6 )
+			if(maybeinliers.size() == alsoinliers.size()){
+				if(maybeinliers.size()>minLines)
+				{
+				ROS_INFO("all are inliers");
+				can.nmbrOfLines=alsoinliers.size();
+				can.bestMSE=MSE;
+				}
+				break;
+			}
+			if(alsoinliers.size()>minLines )
 			{
 				ROS_INFO_STREAM("SSE: "<< SSE << " size: "<< alsoinliers.size() << " model: " << modelrico);
 				if(alsoinliers.size()>maxinliers)
@@ -182,17 +195,19 @@ ROS_INFO("getting lines");
 	can.lineInliers.insert(can.lineInliers.end(),it->inliers.begin(),it->inliers.end());
 	}
 }
-void LineReg::getPlane(Candidate & can, cv_bridge::CvImagePtr & cv_debug_ptr, const tum_ardrone::filter_stateConstPtr &poseMsg)
+void LineReg::getPlane(Candidate & can, cv_bridge::CvImagePtr & cv_debug_ptr, cv_bridge::CvImagePtr & cv_can_ptr, const tum_ardrone::filter_stateConstPtr &poseMsg)
 {
 	if(can.lineInliers.empty())
 		return;
 	pcl::PointCloud<pcl::PointXYZ> ekfcloud;
 	Eigen::Matrix4f trans =Eigen::Matrix4f::Identity();
+	Eigen::AngleAxisd rotxAngle(-CV_PI/2.0, Eigen::Vector3d::UnitX());
+	Eigen::AngleAxisd rotzAngle(-CV_PI/2.0, Eigen::Vector3d::UnitZ());
 	Eigen::AngleAxisd rollAngle(poseMsg->roll, Eigen::Vector3d::UnitZ());
 	Eigen::AngleAxisd yawAngle(poseMsg->yaw, Eigen::Vector3d::UnitY());
 	Eigen::AngleAxisd pitchAngle(poseMsg->pitch, Eigen::Vector3d::UnitX());
 
-	Eigen::Quaternion<double> q = rollAngle * yawAngle * pitchAngle;
+	Eigen::Quaternion<double> q = rollAngle * yawAngle * pitchAngle*rotzAngle*rotxAngle;
 	trans.block<3,3>(0,0) = q.matrix().cast<float>();
 	trans(0,3)=poseMsg->x;
 	trans(1,3)=poseMsg->y;
@@ -206,6 +221,33 @@ void LineReg::getPlane(Candidate & can, cv_bridge::CvImagePtr & cv_debug_ptr, co
 	ransac.computeModel();
 	ransac.getInliers(can.planeInliers);
 	ransac.getModelCoefficients(coefficients);
+	can.angle = std::abs(std::acos(coefficients(2)));
+	if(can.angle > CV_PI/2.0f)
+		can.angle-=CV_PI/2.0f;
+	ROS_INFO_STREAM("angle (deg) " <<  can.angle*180.0f/CV_PI);
+	if(can.angle<minStairAngle || can.angle>maxStairAngle)
+		return;
+	if(pub_can.getNumSubscribers() != 0)
+	{
+		cv::rectangle(cv_can_ptr->image, can.rectangle, cv::Scalar(0,255,0));
+		std::stringstream first, second, third;
+		first << "angle: " << can.angle*180.0/CV_PI;
+		second << "nmbr of lines: " << can.nmbrOfLines;
+		third << "MSE: "<< can.bestMSE;
+		int baseline=0;
+		cv::Point origin(can.rectangle.x,can.rectangle.y);
+		cv::Size textSize = cv::getTextSize(first.str(), cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
+		origin+=cv::Point(0,baseline+1+ textSize.height);
+		cv::putText(cv_can_ptr->image,first.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
+
+		textSize = cv::getTextSize(second.str(), cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
+		origin+=cv::Point(0,baseline+1+textSize.height );
+		cv::putText(cv_can_ptr->image,second.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
+
+		textSize = cv::getTextSize(third.str(), cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
+		origin+=cv::Point(0,baseline+1+textSize.height);
+		cv::putText(cv_can_ptr->image,third.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
+	}
 	//pcl::PointCloud<pcl::PointXYZ>::Ptr plane(new pcl::PointCloud<pcl::PointXYZ>(*cloud,planeInliers));
 	if(pub_det.getNumSubscribers() != 0)
 	{

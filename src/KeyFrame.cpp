@@ -20,7 +20,6 @@ KeyFrame::~KeyFrame()
 ///
 /// \brief Default destructor that clears the inputdata.
 ///
-	cloud->clear();
 	delete[] originalInput;
 }
 
@@ -88,17 +87,15 @@ void KeyFrame::refreshPCL()
 	bool paramsStillGood = my_scaledTH == scaledDepthVarTH &&
 		my_scale*1.2 > camToWorld.scale() &&
 		my_scale < camToWorld.scale()*1.2 &&
-		my_minNearSupport == minNearSupport &&
-		my_sparsifyFactor == sparsifyFactor;
+		my_minNearSupport == minNearSupport;
 	if(paramsStillGood){
 	//ROS_INFO("params still good");
 		return;
 		}
-	cloud->clear();
+	cloud.reset(new PointCloud);
 	my_scaledTH =scaledDepthVarTH;
 	my_scale = camToWorld.scale();
 	my_minNearSupport = minNearSupport;
-	my_sparsifyFactor = sparsifyFactor;
 
 	 int err1=0;
     int err2=0;
@@ -173,16 +170,16 @@ PointCloud::Ptr KeyFrame::getPCL()
 ///
 /// The cloudMutex is locked and the pointer is passed. This method has a blocking behauviour if lock is optained by other local method. KeyFrame::release() can be used to unlock the lock.
 ///
-	cloudMutex.lock();
+	//cloudMutex.lock();
 	refreshPCL();
 	ROS_DEBUG_STREAM("locking cloud "<< id << "size: " <<cloud->width);
 	return cloud;
 }
-void KeyFrame::release()
+/*void KeyFrame::release()
 {
 ///
 /// \brief Releases the lock. Schould be used after KeyFrame::getPcl().
 ///
 	ROS_DEBUG_STREAM("unlocking cloud "<< id );
 	cloudMutex.unlock();
-}
+}*/

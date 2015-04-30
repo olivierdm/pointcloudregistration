@@ -12,12 +12,12 @@ struct InputPointDense
 	float idepth_var;///< stores the variance of the inverse depth
 	unsigned char color[4];///< array for casting color in RGBA
 };
-struct GraphConstraint
+/*struct GraphConstraint
 {
 	int from;
 	int to;
 	float err;
-};
+};*/
 
 
 struct GraphConstraintPt

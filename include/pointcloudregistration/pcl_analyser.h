@@ -16,7 +16,7 @@ class PCL_analyser
     public:
         PCL_analyser();
         virtual ~PCL_analyser();
-	void operator()(lsd_slam_viewer::keyframeMsgConstPtr, std::vector<KeyFrame*>&, cv::UMat&, cv::UMat&, cv::UMat&);
+	void operator()(lsd_slam_viewer::keyframeMsgConstPtr, std::vector<std::shared_ptr<KeyFrame>>&, cv::UMat&, cv::UMat&, cv::UMat&);
     private:
 	ros::NodeHandle nh;
 	image_transport::ImageTransport it;
@@ -28,7 +28,7 @@ class PCL_analyser
 	cv_bridge::CvImagePtr cv_depthf_ptr,cv_H_ptr,cv_K_ptr,cv_CI_ptr;
 	//camera parameters
 	float fx,fy,cx,cy;
-	void getDepthImage(std::vector<KeyFrame*>&, cv::Mat&);
+	void getDepthImage(std::vector<std::shared_ptr <KeyFrame>>&, cv::Mat&);
 	void filterDepth(cv::Mat &, cv::UMat &);
 	void writeHist(float,float,int,cv::UMat);
 	std::vector<KeyFrame*> keyframes;

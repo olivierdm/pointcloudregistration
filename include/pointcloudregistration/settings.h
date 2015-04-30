@@ -9,20 +9,11 @@ extern float pointTesselation;
 extern float lineTesselation;
 extern float gauss_sigma;
 extern 	double maxAngle;
+extern unsigned int minLines; //minimum number of lines to withhold candidate
+extern float minStairAngle;//minimum angle to be a stair
+extern float maxStairAngle;//maximum angle to be a stair
 extern int gauss_size;
-extern bool keepInMemory;
-extern bool showKFCameras;
-extern bool showKFPointclouds;
-extern bool showConstraints;
-extern bool showCurrentCamera;
-extern bool showCurrentPointcloud;
 
 extern float scaledDepthVarTH;
 extern int minNearSupport;
-extern int cutFirstNKf;
-extern int sparsifyFactor;
-extern bool saveAllVideo;
-
-extern int numRefreshedAlready;
-
 extern double lastFrameTime;

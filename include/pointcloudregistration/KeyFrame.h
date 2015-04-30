@@ -23,7 +23,7 @@ public:
 	PointCloud::Ptr getPCL();
 	int id;
 	double time;
-	void release();
+	//void release();
 	int totalPoints, displayedPoints;
 	/// camera pose, may be updated by kf-graph.
 	Sophus::Sim3f camToWorld; 
@@ -37,12 +37,9 @@ private:
 	int width;///< image width
 	int height;///< image height
 	void refreshPCL();
-	boost::mutex cloudMutex;
 
 	float my_scaledTH, my_scale;
 	int my_minNearSupport;
-	int my_sparsifyFactor;
-
 
 	/// pointcloud data in pcl format, stays always in the local coordinates of the keyframe
 	PointCloud::Ptr cloud;

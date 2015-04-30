@@ -19,21 +19,12 @@ float struct_y=2;
 float gauss_sigma=2.0f;
 int gauss_size=5;
 double maxAngle = 8.0;
-bool keepInMemory=true;
-bool showKFCameras = true;
-bool showKFPointclouds = true;
-bool showConstraints = true;
-bool showCurrentCamera = true;
-bool showCurrentPointcloud = true;
+unsigned int minLines = 10;
+float minStairAngle=0.35f;
+float maxStairAngle=1.3f;
 
 float scaledDepthVarTH = 0.01;
 int minNearSupport = 5;
-int cutFirstNKf = 5;
-int sparsifyFactor = 1;
-
-bool saveAllVideo = false;
-
-int numRefreshedAlready = 0;
 
 // cut-off after this
 double lastFrameTime = 1e15;

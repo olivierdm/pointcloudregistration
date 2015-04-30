@@ -6,7 +6,7 @@
 #include <pcl/common/transforms.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <iostream>
-PCL_registration::PCL_registration(KeyFrameGraph* keyGraph):  graph(keyGraph), planeCloud(new pcl::PointCloud<pcl::PointXYZ>), wantExit(false),newPlane(false)
+PCL_registration::PCL_registration(KeyFrameGraph* keyGraph):  graph(keyGraph), planeCloud(new pcl::PointCloud<pcl::PointXYZ>), wantExit(false),newPlane(false), resetRequested(false), lastid(0)
 {
 	visualiser = boost::thread(boost::bind(&PCL_registration::visualiserThread,this));
 	ROS_INFO("registration ready");
@@ -20,18 +20,24 @@ PCL_registration::~PCL_registration()
 	ros::shutdown();
 	std::cout<<"waiting for thread to close"<< std::endl;
 	visualiser.join();
-	for(std::map<int, PointCloud::Ptr>::iterator it= cloudsByID.begin(); it != cloudsByID.end(); it++) {
-		it->second.reset();
-	}
+	eraseClouds();
 	delete graph;
     //dtor
 }
 
 void PCL_registration::addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
-	meddleMutex.lock();
+boost::mutex::scoped_lock lock(meddleMutex);
+	if(!msg->isKeyframe)
+	{
+		if(lastid > msg->id)
+		{
+			ROS_WARN_STREAM("detected backward-jump in id ("<< lastid << " to " << msg->id << "), resetting!");
+			resetRequested = true;
+		}
+		lastid = msg->id;
+	}else
 	graph->addMsg(msg);
-	meddleMutex.unlock();
 }
 void PCL_registration::addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 {
@@ -42,16 +48,21 @@ void PCL_registration::addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr msg
 
 void PCL_registration::visualiserThread()
 {
-	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("cloud"));
+	std::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("cloud"));
   	viewer->setBackgroundColor (0, 0, 0);
 	viewer->initCameraParameters ();
 	viewer->addCoordinateSystem (1.0);
 	Eigen::Affine3f trans;
-	std::vector<KeyFrame*> keyframes;
+	std::vector<std::shared_ptr<KeyFrame>> keyframes;
 	ROS_INFO("started viewer");
-	int size=0;
 while (!wantExit)
   {
+	if(resetRequested){
+		viewer->removeAllPointClouds();
+		eraseClouds();
+		graph->reset();
+		resetRequested=false;
+	}
 	keyframes=graph->getFrames();
 	if(graph->PCLUpdate())
 	{ 
@@ -63,11 +74,7 @@ while (!wantExit)
 			if(!viewer->updatePointCloudPose(id,trans))
 			{
 			//add cloud if id not recognized
-			PointCloud::Ptr tmp(new PointCloud);
-			*tmp=*(keyframes[i]->getPCL());
-			cloudsByID[keyframes[i]->id]=tmp;
-			size+=tmp->width;
-			ROS_DEBUG_STREAM("size viewer: "<< size);
+			cloudsByID[keyframes[i]->id]=keyframes[i]->getPCL();
 	  		//pcl::visualization::PointCloudColorHandlerRGBField<Point> rgb(cloudsByID[keyframes[i]->id]);
 			viewer->addPointCloud(cloudsByID[keyframes[i]->id]/*,rgb*/,id);
 			ROS_DEBUG_STREAM("adding keyframe");
@@ -75,7 +82,6 @@ while (!wantExit)
 			//update pose
 			if(!viewer->updatePointCloudPose(id,trans))
 				ROS_WARN_STREAM("no pointcloud with id: " << id);
-			keyframes[i]->release();
 			}
 		}
 	}
@@ -90,12 +96,17 @@ while (!wantExit)
 	viewer->updatePointCloudPose("stair",campose);
 	}
 	viewer->spinOnce (100);
-	boost::this_thread::sleep (boost::posix_time::microseconds (100000));
+	boost::this_thread::sleep (boost::posix_time::microseconds (50000));
   }
 	viewer->removeAllPointClouds();
 	viewer->spinOnce();
 	viewer->close();
-	viewer.reset();
+}
+void PCL_registration::eraseClouds()
+{
+	for(std::map<int, PointCloud::Ptr>::iterator it= cloudsByID.begin(); it != cloudsByID.end(); it++) {
+		it->second.reset();
+	}
 }
 void PCL_registration::drawPlane(pcl::PointCloud<pcl::PointXYZ>::ConstPtr plane,Eigen::Affine3f & pose)
 {

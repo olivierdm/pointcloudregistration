@@ -24,13 +24,12 @@ public:
 	//void refreshPCL();
 	void addMsg(lsd_slam_viewer::keyframeMsgConstPtr);
 	void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
-	std::vector<KeyFrame*> getFrames();
+	std::vector<std::shared_ptr<KeyFrame>> getFrames();
+	void reset();
 
 private:
-	std::map<int, KeyFrame*> keyframesByID;
-	std::vector<KeyFrame*> keyframes;
-	std::vector<GraphConstraintPt> constraints;
-	//PointCloud::Ptr cloud;
+	std::map<int, std::shared_ptr<KeyFrame>> keyframesByID;
+	//std::vector<std::shared_ptr<KeyFrame>> keyframes;
 	boost::mutex cloudMutex,graphMutex;
 	bool cloudUpdate;
 
