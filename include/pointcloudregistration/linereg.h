@@ -1,7 +1,6 @@
 #ifndef LINEREG_H
 #define LINEREG_H
 #include <ros/ros.h>
-#include <Eigen/Core>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
@@ -25,7 +24,6 @@ class LineReg
 	void getParallelLines(Candidate &, std::vector<DepthLine>&);
 	void get3DLines(Candidate &, cv::Mat, cv::Mat, cv::Mat, float&, float&, float&, float&);
 	void getPlane(Candidate &, cv::Mat&, cv::Mat&, const tum_ardrone::filter_stateConstPtr&);
-	Eigen::Affine3f campose;
 };
 
 #endif // LINEREG_H

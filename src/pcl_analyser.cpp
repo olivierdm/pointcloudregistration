@@ -7,6 +7,7 @@
 #include "pcl/point_types.h"
 #include <pcl/common/transforms.h>
 #include <sophus/se3.hpp>
+#include "sophus/sim3.hpp"
 #include <algorithm>
 #include <opencv2/opencv.hpp>
 #include "opencv2/core/utility.hpp"
@@ -49,17 +50,24 @@ PCL_analyser::~PCL_analyser()
 
 void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::vector<std::shared_ptr<KeyFrame>> & keyframes, cv::UMat & filt, cv::UMat & H, cv::UMat & CI)
 {
+		Sophus::Sim3f camToWorld;
 		memcpy(camToWorld.data(), msg->camToWorld.data(), 7*sizeof(float));
-		my_scaleDepthImage= static_cast<int> (scaleDepthImage +0.5f);
-		width=my_scaleDepthImage*msg->width;
-		height=my_scaleDepthImage*msg->height;
-		fx=my_scaleDepthImage*msg->fx;
-		fy=my_scaleDepthImage*msg->fy;
-		cx=my_scaleDepthImage*msg->cx;
-		cy=my_scaleDepthImage*msg->cy;
+		int my_scaleDepthImage= static_cast<int> (scaleDepthImage +0.5f);
+		int width=my_scaleDepthImage*msg->width;
+		int height=my_scaleDepthImage*msg->height;
+		float fx=my_scaleDepthImage*msg->fx;
+		float fy=my_scaleDepthImage*msg->fy;
+		float cx=my_scaleDepthImage*msg->cx;
+		float cy=my_scaleDepthImage*msg->cy;
 
 		cv::Mat depthImg(height,width,CV_32F);
-		getDepthImage(keyframes, depthImg);
+		std::vector<framedist> mykeyframes;
+		mykeyframes.reserve(keyframes.size());
+		for(auto frame:keyframes)
+		{
+			mykeyframes.push_back(framedist(frame,camToWorld));
+		}
+		getDepthImage(mykeyframes, fx, fy, cx, cy, depthImg);
 		if (pub_depth.getNumSubscribers() != 0){
 			cv::Mat nidepth;
 			depthImg.convertTo(nidepth,CV_16UC1,1000);
@@ -67,7 +75,7 @@ void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::ve
 			pub_depth.publish(cv_depth.toImageMsg());
 		}
 
-		filterDepth(depthImg,filt);
+		filterDepth(depthImg, my_scaleDepthImage, filt);
 		if (pub_depthf.getNumSubscribers() != 0){
 			cv::Mat nidepth;
 			depthImg.convertTo(nidepth,CV_16UC1,1000);
@@ -75,7 +83,7 @@ void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::ve
 			pub_depthf.publish(cv_depthf.toImageMsg());
 		}
 		cv::UMat K;
-		calcCurvature(filt,H,K,CI);
+		calcCurvature(filt, fx, fy, my_scaleDepthImage, H, K, CI);
 		//publish H
 		if (pub_H.getNumSubscribers() != 0){
 			cv::Mat nidepth;
@@ -98,11 +106,17 @@ void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::ve
 			pub_curv.publish(cv_CI.toImageMsg());
 		}
 }
-void PCL_analyser::getDepthImage(std::vector<std::shared_ptr<KeyFrame>> & keyframes, cv::Mat & depthImg)
+void PCL_analyser::getDepthImage(std::vector<framedist>& mykeyframes, const float& fx, const float& fy, const float& cx, const float& cy, cv::Mat & depthImg)
 {
 ///
 /// \brief Generates a depth image from the received keyframes
 ///
+///@param[in] keyframes all the currently captured keyframes
+///@param[in] fx
+///@param[in] fy
+///@param[in] cx
+///@param[in] cy
+///@param[out] depthImg the generated depth image
 /// The function gets the currently received keyframes from the keyFrameGraph instance and transforms them to
 /// coordinates in the liveframe axes. This set of accumulated points is then projected using the camera parameters
 /// to get a depth image that corresponds with the image captured by camera.
@@ -112,12 +126,7 @@ void PCL_analyser::getDepthImage(std::vector<std::shared_ptr<KeyFrame>> & keyfra
     	PointCloud::Ptr cloud(new PointCloud), depth(new PointCloud);
 	depthImg.setTo(maxZ);
 	//need to insert function that calculates clouds that are in region of interest
-	std::vector<framedist> mykeyframes;
-	mykeyframes.reserve(keyframes.size());
-	for(auto frame:keyframes)
-	{
-		mykeyframes.push_back(framedist(frame,camToWorld));
-	}
+
 	std::sort(mykeyframes.begin(),mykeyframes.end());
 	int k = std::min(10,static_cast<int>(mykeyframes.size()));
 	mykeyframes.erase(mykeyframes.begin()+k,mykeyframes.end());
@@ -136,7 +145,6 @@ void PCL_analyser::getDepthImage(std::vector<std::shared_ptr<KeyFrame>> & keyfra
   auto t2 = std::chrono::high_resolution_clock::now();
 
 ROS_INFO_STREAM("acumulating "<< k << "clouds took "<< std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() <<" milisecond(s).");
- 	assert(width == depthImg.cols && height == depthImg.rows);
 t1 = std::chrono::high_resolution_clock::now();
 	for(auto it = cloud->begin(); it != cloud->end(); it++){ 
 		if(it->z>maxZ|| it->z<minZ)
@@ -144,7 +152,7 @@ t1 = std::chrono::high_resolution_clock::now();
 		x=static_cast<int> ((fx*(it->x)/(it->z)+cx)+0.5f);
 		y=static_cast<int> ((fy*(it->y)/(it->z)+cy)+0.5f);
 
-		if(x<0 || x >= width||y<0||y >= height)
+		if(x<0 || x >= depthImg.cols||y<0||y >= depthImg.rows)
 			continue;
 		depthImg.at<float>(y,x)=std::min(depthImg.at<float>(y,x),it->z);
     	}
@@ -153,7 +161,7 @@ t2 = std::chrono::high_resolution_clock::now();
 ROS_INFO_STREAM("projection took "<<  std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() <<" milisecond(s).");
 
 }
-void PCL_analyser::filterDepth(cv::Mat & depthImg, cv::UMat & filt)
+void PCL_analyser::filterDepth(const cv::Mat& depthImg, const int& my_scaleDepthImage, cv::UMat& filt)
 {
 ///
 /// \brief applies required filtering and resizes the image back to the original size.
@@ -167,7 +175,7 @@ void PCL_analyser::filterDepth(cv::Mat & depthImg, cv::UMat & filt)
 	cv::resize(filt.clone(),filt,cv::Size(0,0),1.0f/my_scaleDepthImage,1.0f/my_scaleDepthImage,cv::INTER_AREA);
 	cv::GaussianBlur(filt.clone(),filt,cv::Size(gauss_size,gauss_size),gauss_sigma);
 }
-void PCL_analyser::calcCurvature(const cv::UMat & filt, cv::UMat & H, cv::UMat & K, cv::UMat & CI)
+void PCL_analyser::calcCurvature(const cv::UMat & filt, const float& fx, const float& fy, const int& my_scaleDepthImage, cv::UMat & H, cv::UMat & K, cv::UMat & CI)
 {
 ///
 /// \brief calc the curvature using the constructed depth image.

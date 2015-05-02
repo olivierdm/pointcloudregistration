@@ -1,7 +1,6 @@
 #include "pointcloudregistration/linereg.h"
 #include "pointcloudregistration/settings.h"
 #include <pcl/filters/extract_indices.h>
-#include <ros/ros.h>
 #include <sensor_msgs/image_encodings.h>
 #include <Eigen/Geometry>
 #include <pcl/common/transforms.h>
