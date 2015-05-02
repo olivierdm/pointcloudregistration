@@ -1,4 +1,6 @@
 #include "pointcloudregistration/pcl_registration.h"
+#include "pointcloudregistration/KeyFrameGraph.h"
+#include "pointcloudregistration/KeyFrame.h"
 #include <boost/lexical_cast.hpp>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -6,7 +8,7 @@
 #include <pcl/common/transforms.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <iostream>
-PCL_registration::PCL_registration(KeyFrameGraph* keyGraph):  graph(keyGraph), planeCloud(new pcl::PointCloud<pcl::PointXYZ>), wantExit(false),newPlane(false), resetRequested(false), lastid(0)
+PCL_registration::PCL_registration(std::shared_ptr<KeyFrameGraph>& keyGraph):  graph(keyGraph), planeCloud(new pcl::PointCloud<pcl::PointXYZ>), wantExit(false),newPlane(false), resetRequested(false), lastid(0)
 {
 	visualiser = boost::thread(boost::bind(&PCL_registration::visualiserThread,this));
 	ROS_INFO("registration ready");
@@ -21,13 +23,12 @@ PCL_registration::~PCL_registration()
 	std::cout<<"waiting for thread to close"<< std::endl;
 	visualiser.join();
 	eraseClouds();
-	delete graph;
     //dtor
 }
 
 void PCL_registration::addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
-boost::mutex::scoped_lock lock(meddleMutex);
+	boost::mutex::scoped_lock lock(meddleMutex);
 	if(!msg->isKeyframe)
 	{
 		if(lastid > msg->id)
@@ -41,9 +42,8 @@ boost::mutex::scoped_lock lock(meddleMutex);
 }
 void PCL_registration::addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 {
-	meddleMutex.lock();
+	boost::mutex::scoped_lock lock(meddleMutex);
 	graph->addGraphMsg(msg);
-	meddleMutex.unlock();
 }
 
 void PCL_registration::visualiserThread()
@@ -87,13 +87,13 @@ while (!wantExit)
 	}
 	if(newPlane)
 	{
-	boost::mutex::scoped_lock lock(planeMutex);
-	newPlane = false;
-	viewer->removePointCloud("stair");
-	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> stair_color (planeCloud, 230, 20, 20); // Red
-	viewer->addPointCloud (planeCloud, stair_color, "stair");
-	viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2,"stair");
-	viewer->updatePointCloudPose("stair",campose);
+		boost::mutex::scoped_lock lock(planeMutex);
+		newPlane = false;
+		viewer->removePointCloud("stair");
+		pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> stair_color (planeCloud, 230, 20, 20); // Red
+		viewer->addPointCloud (planeCloud, stair_color, "stair");
+		viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2,"stair");
+		viewer->updatePointCloudPose("stair",campose);
 	}
 	viewer->spinOnce (100);
 	boost::this_thread::sleep (boost::posix_time::microseconds (50000));
@@ -104,14 +104,14 @@ while (!wantExit)
 }
 void PCL_registration::eraseClouds()
 {
-	for(std::map<int, PointCloud::Ptr>::iterator it= cloudsByID.begin(); it != cloudsByID.end(); it++) {
+	for(auto it= cloudsByID.begin(); it != cloudsByID.end(); it++) {
 		it->second.reset();
 	}
 }
-void PCL_registration::drawPlane(pcl::PointCloud<pcl::PointXYZ>::ConstPtr plane,Eigen::Affine3f & pose)
+void PCL_registration::drawPlane(const pcl::PointCloud<pcl::PointXYZ>::Ptr& plane, const Eigen::Affine3f & pose)
 {
 	boost::mutex::scoped_lock lock(planeMutex);
-	*planeCloud=*plane;
+	planeCloud=plane;
 	campose=pose;
 	newPlane =true;
 }

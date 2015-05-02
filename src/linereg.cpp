@@ -54,47 +54,60 @@ LineReg::LineReg(): nh("~"),it(nh)
 
 LineReg::~LineReg()
 {
-	boost::mutex::scoped_lock lock(dataMutex);
 //dtor
 }
-void LineReg::operator()(cv::UMat & depthImg, cv::UMat &  H, cv::UMat & CI, std::vector<cv::Rect> & rectangles, std::vector<cv::Vec4f> &  lines, cv_bridge::CvImagePtr & cv_input_ptr, const lsd_slam_viewer::keyframeMsgConstPtr &frameMsg, const tum_ardrone::filter_stateConstPtr &poseMsg)
+bool LineReg::operator()(cv::UMat  depthImg, cv::UMat &  H, cv::UMat & CI, std::vector<cv::Rect> & rectangles, std::vector<cv::Vec4f> &  lines, cv_bridge::CvImagePtr & cv_input_ptr, const lsd_slam_viewer::keyframeMsgConstPtr &frameMsg, const tum_ardrone::filter_stateConstPtr &poseMsg)
 {
 ///
-/// \brief  Accepts the data.
-/// @param[in] lines set of lines that are detected on the visual image
-// @param[in] quality vector indicating the quality of each line 
+/// \brief  Accepts the data and fusions it to expell candidates
+/// @param[in] depthImg a filtered version of the rendered depth image
+/// @param[in] H matrix with the mean curvature
 /// @param[in] CI matrix containing the curvature in each point
-/// @param[in] deptImg filtered depth image
-// @param[in] vector containing the intrinsic camera parameters
-	boost::mutex::scoped_lock lock(dataMutex);
-	candidates.clear();
-	depthLines.clear();
+/// @param[in] rectangles vector containing all the candidates
+/// @param[in] lines set of lines that are detected on the visual image
+/// @param[in] cv_input_ptr the colored input image
+/// @param[in] frameMsg lsdslame liveframe
+/// @param[in] poseMsg state information coming from TUM_ardrone
+
+	std::vector<Candidate> candidates;
+	std::vector<DepthLine> depthLines;
 	candidates.reserve(rectangles.size());
-	for_each(rectangles.begin(),rectangles.end(),[this](cv::Rect & rectangle){candidates.push_back(Candidate(rectangle));});
+	for_each(rectangles.begin(),rectangles.end(),[&candidates](cv::Rect & rectangle){candidates.push_back(Candidate(rectangle));});
 	depthLines.reserve(lines.size());
-	for_each(lines.begin(),lines.end(),[this](cv::Vec4f & line ){depthLines.push_back(DepthLine(line));});
-	//copy the msg to a cv::Mat instance
-	cv_bridge::CvImagePtr cv_debug_ptr(new cv_bridge::CvImage(cv_input_ptr->header,"bgr8",cv_input_ptr->image.clone()));
-	cv_bridge::CvImagePtr cv_can_ptr(new cv_bridge::CvImage(cv_input_ptr->header,"bgr8",cv_input_ptr->image.clone()));
+	for_each(lines.begin(),lines.end(),[&depthLines](cv::Vec4f & line ){depthLines.push_back(DepthLine(line));});
 	cv::UMat curv_weight;
 	cv::add(CI.mul(0.95f),0.05f,curv_weight);
 	float fxi=1.0f/frameMsg->fx;
 	float fyi=1.0f/frameMsg->fy;
 	float cxi=-frameMsg->cx * fxi;
 	float cyi=-frameMsg->cy *fyi;
-tbb::parallel_for_each(candidates.begin(),candidates.end(),[&](Candidate & can){
-		getParallelLines(can);
+	cv::Mat linesImg, canImg;
+	//copy the cv_bridge instance to a cv::Mat if there are subscribers
+	if(pub_det.getNumSubscribers() != 0)
+			linesImg=cv_input_ptr->image.clone();
+
+	if(pub_can.getNumSubscribers() != 0)
+		canImg=cv_input_ptr->image.clone();
+
+	tbb::parallel_for_each(candidates.begin(),candidates.end(),[&](Candidate & can){
+		getParallelLines(can, depthLines);
 		if(can.nmbrOfLines==0)
 			return;
 		get3DLines(can, depthImg.getMat(cv::ACCESS_READ), curv_weight.getMat(cv::ACCESS_READ), H.getMat(cv::ACCESS_READ), fxi, fyi, cxi, cyi);
-		getPlane(can, cv_debug_ptr, cv_can_ptr, poseMsg);
-		ROS_INFO("process candidate");});
-	if(pub_det.getNumSubscribers() != 0)
-		pub_det.publish(cv_debug_ptr->toImageMsg());
-	if(pub_can.getNumSubscribers() != 0)
-		pub_can.publish(cv_can_ptr->toImageMsg());
+		getPlane(can, linesImg, canImg, poseMsg);
+		ROS_INFO("process candidate");
+	});
+	if(!linesImg.empty()){
+		cv_bridge::CvImage cv_line(cv_input_ptr->header,"bgr8", linesImg);
+		pub_det.publish(cv_line.toImageMsg());
+	}
+	if(!canImg.empty()){
+		cv_bridge::CvImage cv_can(cv_input_ptr->header,"bgr8", canImg);
+		pub_can.publish(cv_can.toImageMsg());
+	}
+	return false;
 }
-void LineReg::getParallelLines(Candidate & can)
+void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLines)
 {
 
 		//get lines that intersect with rectangle
@@ -195,7 +208,7 @@ ROS_INFO("getting lines");
 	can.lineInliers.insert(can.lineInliers.end(),it->inliers.begin(),it->inliers.end());
 	}
 }
-void LineReg::getPlane(Candidate & can, cv_bridge::CvImagePtr & cv_debug_ptr, cv_bridge::CvImagePtr & cv_can_ptr, const tum_ardrone::filter_stateConstPtr &poseMsg)
+void LineReg::getPlane(Candidate & can, cv::Mat & linesImg, cv::Mat & canImg, const tum_ardrone::filter_stateConstPtr &poseMsg)
 {
 	if(can.lineInliers.empty())
 		return;
@@ -227,9 +240,9 @@ void LineReg::getPlane(Candidate & can, cv_bridge::CvImagePtr & cv_debug_ptr, cv
 	ROS_INFO_STREAM("angle (deg) " <<  can.angle*180.0f/CV_PI);
 	if(can.angle<minStairAngle || can.angle>maxStairAngle)
 		return;
-	if(pub_can.getNumSubscribers() != 0)
+	if(!canImg.empty())
 	{
-		cv::rectangle(cv_can_ptr->image, can.rectangle, cv::Scalar(0,255,0));
+		cv::rectangle(canImg, can.rectangle, cv::Scalar(0,255,0));
 		std::stringstream first, second, third;
 		first << "angle: " << can.angle*180.0/CV_PI;
 		second << "nmbr of lines: " << can.nmbrOfLines;
@@ -238,24 +251,24 @@ void LineReg::getPlane(Candidate & can, cv_bridge::CvImagePtr & cv_debug_ptr, cv
 		cv::Point origin(can.rectangle.x,can.rectangle.y);
 		cv::Size textSize = cv::getTextSize(first.str(), cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
 		origin+=cv::Point(0,baseline+1+ textSize.height);
-		cv::putText(cv_can_ptr->image,first.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
+		cv::putText(canImg, first.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
 
 		textSize = cv::getTextSize(second.str(), cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
 		origin+=cv::Point(0,baseline+1+textSize.height );
-		cv::putText(cv_can_ptr->image,second.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
+		cv::putText(canImg, second.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
 
 		textSize = cv::getTextSize(third.str(), cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
 		origin+=cv::Point(0,baseline+1+textSize.height);
-		cv::putText(cv_can_ptr->image,third.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
+		cv::putText(canImg, third.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
 	}
-	//pcl::PointCloud<pcl::PointXYZ>::Ptr plane(new pcl::PointCloud<pcl::PointXYZ>(*cloud,planeInliers));
-	if(pub_det.getNumSubscribers() != 0)
+
+	if(!linesImg.empty())
 	{
 		for(size_t i=0 ; i < can.lines.size();i++)
 		{
 			cv::Vec4f line =can.lines[i].line;
-			cv::Scalar color(0,255*can.lines[i].curvature,255*(1.0f-can.lines[i].curvature));
-			cv::line(cv_debug_ptr->image,cv::Point2f(line[0],line[1]),cv::Point2f(line[2],line[3]),color);
+			cv::Scalar color(0, 255*can.lines[i].curvature, 255*(1.0f-can.lines[i].curvature));
+			cv::line(linesImg, cv::Point2f(line[0],line[1]), cv::Point2f(line[2],line[3]),color);
 		}
 	}
 }

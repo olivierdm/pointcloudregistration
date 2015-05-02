@@ -9,76 +9,75 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <image_transport/subscriber_filter.h>
-//#include "boost/thread.hpp"
-//#include <boost/lexical_cast.hpp>
 #include "pointcloudregistration/pcl_registration.h"
 #include "pointcloudregistration/pcl_analyser.h"
+#include "pointcloudregistration/KeyFrameGraph.h"
 #include "pointcloudregistration/vision.h"
 #include "pointcloudregistration/linereg.h"
 #include "pointcloudregistration/settings.h"
 #include <Eigen/Geometry>
 #include <iostream>
+#include <memory>
 #include "tbb/task_group.h"
 
-PCL_registration* registrar=0;
-PCL_analyser* pcl_analyse=0;
-KeyFrameGraph* graph=0;
-Vision* visor=0;
-LineReg* stairs=0;
+std::unique_ptr<PCL_registration> registrar;
+std::unique_ptr<PCL_analyser> pcl_analyse;
+std::shared_ptr<KeyFrameGraph> graph;
+std::unique_ptr<Vision> visor;
+std::unique_ptr<LineReg> stairs;
 tbb::task_group g;
-cv::UMat depthImg, H, CI;
-std::vector<cv::Rect> rectangles;
-std::vector<cv::Vec4f> lines;
-cv_bridge::CvImagePtr cv_input_ptr;
+
 bool firstKF=false;
 void frameCb(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
-	if(msg->time > lastFrameTime || registrar == 0 ) return;
+	if(msg->time > lastFrameTime ) return;
 	firstKF=true;
 	registrar->addFrameMsg(msg);
 }
 void graphCb(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 {
-	if(registrar == 0) return;
 	registrar->addGraphMsg(msg);
 }
 void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::keyframeMsgConstPtr &frameMsg, const tum_ardrone::filter_stateConstPtr &poseMsg)
 {
-	if(pcl_analyse==0 || visor==0||!firstKF)
-		return;
+///
+/// \brief Process the incoming data and detect stairs
+/// @param[in] imgMsg ros image msg from the ardrone front camera
+/// @param[in] frameMsg lsdslam liveframe
+/// @param[in] poseMsg pose information from TUM_ardrone
+
+	cv::UMat depthImg, H, CI;
+	std::vector<cv::Rect> rectangles;
+	std::vector<cv::Vec4f> lines;
+	cv_bridge::CvImagePtr cv_input_ptr;
+	pcl::PointCloud<pcl::PointXYZ>::Ptr canPlane;
+	Eigen::Affine3f pose;
 
 	//pass the data and do processing
-	ROS_INFO("in callback");
+	ROS_DEBUG("in callback");
 	std::vector<std::shared_ptr<KeyFrame>> keyframes = graph->getFrames();
 	g.run([&]{(*pcl_analyse)(frameMsg, keyframes, depthImg, H, CI);});
-	try
-	{
+	try{
 		cv_input_ptr = cv_bridge::toCvCopy(imgMsg, sensor_msgs::image_encodings::BGR8);
 	}
-	catch (cv_bridge::Exception& e)
-	{
-		ROS_ERROR("cv_bridge exception: %s", e.what());
+	catch (cv_bridge::Exception& e){
+		ROS_ERROR_STREAM("cv_bridge exception: " << e.what());
 		return;
 	}
-	(*visor)(cv_input_ptr,poseMsg, rectangles, lines);
+	(*visor)(cv_input_ptr, poseMsg, rectangles, lines);
 	g.wait();
-	(*stairs)(depthImg, H, CI, rectangles, lines, cv_input_ptr, frameMsg, poseMsg);
-
-	//pcl_analyse->process(frameMsg);
+	if((*stairs)(depthImg, H, CI, rectangles, lines, cv_input_ptr, frameMsg, poseMsg));
+		registrar->drawPlane(canPlane, pose);
 }
 
 int main( int argc, char** argv )
 {
-	boost::thread rosThread;
-	// start ROS thread
+	//init ros
 	ros::init(argc, argv, "registrar");
-	//rosThread = boost::thread(rosThreadLoop);
-	graph = new KeyFrameGraph();
-	registrar = new PCL_registration(graph);
-	stairs = new LineReg();
-	visor = new Vision();
-	pcl_analyse = new PCL_analyser();
-
+	//init classes for input
+	graph = std::make_shared<KeyFrameGraph>();
+	registrar.reset(new PCL_registration(graph));
+	//init queu and handler for lsdslam messages
 	ros::CallbackQueue lsdqueue;
 	ros::NodeHandle lsdhandler;
 	lsdhandler.setCallbackQueue(&lsdqueue);
@@ -88,11 +87,16 @@ int main( int argc, char** argv )
 	ros::AsyncSpinner lsdspinner(1, &lsdqueue);
 	lsdspinner.start();
 
+	//init classes for processing
+	stairs.reset(new LineReg());
+	visor.reset(new Vision());
+	pcl_analyse.reset(new PCL_analyser());
+	//init queu and 
 	ros::CallbackQueue processqueue;
 	ros::NodeHandle processhandler;
 	processhandler.setCallbackQueue(&processqueue);
 	image_transport::ImageTransport it(processhandler);
-	image_transport::SubscriberFilter image_sub(it, processhandler.resolveName("image"),1);
+	image_transport::SubscriberFilter image_sub(it, processhandler.resolveName("image"), 1);
 	message_filters::Subscriber<lsd_slam_viewer::keyframeMsg> liveFrames_sub(processhandler,processhandler.resolveName("lsd_slam/liveframes"), 1);
 	message_filters::Subscriber<tum_ardrone::filter_state> pose_sub(processhandler,processhandler.resolveName("/ardrone/predictedPose"),1);
 	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, lsd_slam_viewer::keyframeMsg, tum_ardrone::filter_state> MySyncPolicy;
@@ -103,13 +107,5 @@ int main( int argc, char** argv )
 	processspinner.start();
 
 	ros::waitForShutdown();
-	//rosThread.join();
 	std::cout<<"Shutting down ... " << std::endl;
-	delete registrar;
-	//can not be deleted causes lock at shutdown
-	//delete visor;
-	//delete pcl_analyse;
-	//delete graph;
-	std::cout << "Done" << std::endl;
-
 }

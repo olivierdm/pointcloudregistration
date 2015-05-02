@@ -4,27 +4,28 @@
 #include "pcl_ros/point_cloud.h"
 #include "pcl/point_types.h"
 #include "sophus/sim3.hpp"
-#include "pointcloudregistration/KeyFrameGraph.h"
-#include "pointcloudregistration/KeyFrame.h"
+#include "lsd_slam_viewer/keyframeGraphMsg.h"
+#include "lsd_slam_viewer/keyframeMsg.h"
+#include "boost/thread.hpp"
 #include "pointcloudregistration/datastructures.h"
 #include <map>
-
+class KeyFrameGraph;
 
 class PCL_registration
 {
-    public:
-        PCL_registration(KeyFrameGraph*);
-        virtual ~PCL_registration();
-        void addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr);
-	void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
-	void drawPlane(pcl::PointCloud<pcl::PointXYZ>::ConstPtr,Eigen::Affine3f & );
+	public:
+		PCL_registration(std::shared_ptr<KeyFrameGraph>&);
+		virtual ~PCL_registration();
+		void addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr);
+		void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
+		void drawPlane(const pcl::PointCloud<pcl::PointXYZ>::Ptr&,const Eigen::Affine3f & );
 
     protected:
     private:
 	boost::mutex meddleMutex,planeMutex;
-	KeyFrameGraph* graph;
+	std::shared_ptr<KeyFrameGraph> graph;
 	std::map<int, PointCloud::Ptr> cloudsByID;
-	pcl::PointCloud<pcl::PointXYZ>::Ptr planeCloud;
+	pcl::PointCloud<pcl::PointXYZ>::ConstPtr planeCloud;
 	boost::thread visualiser;
 	void visualiserThread();
 	void eraseClouds();

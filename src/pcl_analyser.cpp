@@ -2,6 +2,7 @@
 #include "pointcloudregistration/KeyFrame.h"
 #include "pointcloudregistration/datastructures.h"
 #include "pointcloudregistration/settings.h"
+#include <cv_bridge/cv_bridge.h>
 #include <Eigen/Geometry>
 #include "pcl/point_types.h"
 #include <pcl/common/transforms.h>
@@ -31,28 +32,13 @@ struct framedist{
 	bool operator<(const framedist& rhs) const
 		{return dist < rhs.dist;}
 };
-PCL_analyser::PCL_analyser(): nh("~"),it(nh),cv_depthf_ptr(new cv_bridge::CvImage),cv_H_ptr(new cv_bridge::CvImage), cv_K_ptr(new cv_bridge::CvImage), cv_CI_ptr(new cv_bridge::CvImage)
+PCL_analyser::PCL_analyser(): nh("~"),it(nh)
 {
 	pub_depth = it.advertise("depth",1);
 	pub_depthf = it.advertise("depth_filtered",1);
 	pub_curv = it.advertise("curvature",1);
 	pub_K = it.advertise("K",1);
 	pub_H = it.advertise("H",1);
-	//initiate filtered depth image
-	cv_depthf_ptr->encoding="mono16";
-	cv_depthf_ptr->header.frame_id="ardrone_base_frontcam";
-	//initiate H image
-	cv_H_ptr->encoding="mono16";
-	cv_H_ptr->header.frame_id="mean_curvature";
-	//initiate K image
-	cv_K_ptr->encoding="mono16";
-	cv_K_ptr->header.frame_id="gaussian_curvature";
-	//initiate curvature image
-	cv_CI_ptr->encoding="mono16";
-	cv_CI_ptr->header.frame_id="curvature";
-	//create thread
-	//worker = boost::thread(boost::bind(&PCL_analyser::threadLoop,this));
-
 	//ctor
 }
 PCL_analyser::~PCL_analyser()
@@ -71,13 +57,46 @@ void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::ve
 		fy=my_scaleDepthImage*msg->fy;
 		cx=my_scaleDepthImage*msg->cx;
 		cy=my_scaleDepthImage*msg->cy;
-		//copy header
-		header=msg->header;
-		ROS_INFO_STREAM("fx: "<< fx << ", fy: "<< fy << ", cx: "<< cx << ", cy: " << cy);
+
 		cv::Mat depthImg(height,width,CV_32F);
 		getDepthImage(keyframes, depthImg);
+		if (pub_depth.getNumSubscribers() != 0){
+			cv::Mat nidepth;
+			depthImg.convertTo(nidepth,CV_16UC1,1000);
+			cv_bridge::CvImage cv_depth(msg->header,"mono16", nidepth);
+			pub_depth.publish(cv_depth.toImageMsg());
+		}
+
 		filterDepth(depthImg,filt);
-		calcCurvature(filt,H,CI);
+		if (pub_depthf.getNumSubscribers() != 0){
+			cv::Mat nidepth;
+			depthImg.convertTo(nidepth,CV_16UC1,1000);
+			cv_bridge::CvImage cv_depthf(msg->header,"mono16", nidepth);
+			pub_depthf.publish(cv_depthf.toImageMsg());
+		}
+		cv::UMat K;
+		calcCurvature(filt,H,K,CI);
+		//publish H
+		if (pub_H.getNumSubscribers() != 0){
+			cv::Mat nidepth;
+			H.convertTo(nidepth,CV_16UC1,1000.0);
+			cv_bridge::CvImage cv_H(msg->header,"mono16", nidepth);
+			pub_H.publish(cv_H.toImageMsg());
+		}
+		//publish K
+		if (pub_K.getNumSubscribers() != 0){
+			cv::Mat nidepth;
+			K.convertTo(nidepth,CV_16UC1,1000.0);
+			cv_bridge::CvImage cv_K(msg->header,"mono16", nidepth);
+			pub_K.publish(cv_K.toImageMsg());
+		}
+		//publish curvature
+		if (pub_curv.getNumSubscribers() != 0){
+			cv::Mat nidepth;
+			CI.convertTo(nidepth, CV_16UC1,100.0);
+			cv_bridge::CvImage cv_CI(msg->header,"mono16", nidepth);
+			pub_curv.publish(cv_CI.toImageMsg());
+		}
 }
 void PCL_analyser::getDepthImage(std::vector<std::shared_ptr<KeyFrame>> & keyframes, cv::Mat & depthImg)
 {
@@ -132,12 +151,7 @@ t1 = std::chrono::high_resolution_clock::now();
 
 t2 = std::chrono::high_resolution_clock::now();
 ROS_INFO_STREAM("projection took "<<  std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() <<" milisecond(s).");
-	if (!pub_depth.getNumSubscribers())
-		return;
-	cv::Mat nidepth;
-	depthImg.convertTo(nidepth,CV_16UC1,1000);
-	cv_bridge::CvImage cv_depth(header,"mono16", nidepth);
-	pub_depth.publish(cv_depth.toImageMsg());
+
 }
 void PCL_analyser::filterDepth(cv::Mat & depthImg, cv::UMat & filt)
 {
@@ -147,19 +161,13 @@ void PCL_analyser::filterDepth(cv::Mat & depthImg, cv::UMat & filt)
 ///
 	cv::UMat filt_t, mask;
 	cv::compare(depthImg,maxZ,mask,cv::CMP_EQ);
-	cv::Mat structElm = cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(struct_x*my_scaleDepthImage,struct_y*my_scaleDepthImage),cv::Point(-1,-1));
+	cv::Mat structElm = cv::getStructuringElement(cv::MORPH_ELLIPSE,cv::Size(struct_x*my_scaleDepthImage, struct_y*my_scaleDepthImage), cv::Point(-1,-1));
 	cv::erode(depthImg.getUMat(cv::ACCESS_READ), filt_t,structElm,cv::Point(-1,-1),1);
 	filt_t.copyTo(filt,mask);
 	cv::resize(filt.clone(),filt,cv::Size(0,0),1.0f/my_scaleDepthImage,1.0f/my_scaleDepthImage,cv::INTER_AREA);
 	cv::GaussianBlur(filt.clone(),filt,cv::Size(gauss_size,gauss_size),gauss_sigma);
-
-	if (!pub_depthf.getNumSubscribers())
-		return;
-	filt.convertTo(cv_depthf_ptr->image,CV_16UC1,1000);
-	cv_depthf_ptr->header.stamp=header.stamp;
-	pub_depthf.publish(cv_depthf_ptr->toImageMsg());
 }
-void PCL_analyser::calcCurvature(const cv::UMat & filt, cv::UMat & H, cv::UMat & CI)
+void PCL_analyser::calcCurvature(const cv::UMat & filt, cv::UMat & H, cv::UMat & K, cv::UMat & CI)
 {
 ///
 /// \brief calc the curvature using the constructed depth image.
@@ -190,7 +198,7 @@ void PCL_analyser::calcCurvature(const cv::UMat & filt, cv::UMat & H, cv::UMat &
 	cv::multiply(normx.mul(normx),hxx,hxx);
 	cv::multiply(normy.mul(normy),hyy,hyy);
 	cv::multiply(normy.mul(normx),hxy,hxy);
-	cv::UMat Kden,Knom,K,CInom,CIden,Hden,mask32,Hnom1,Hnom2,Hnom3;
+	cv::UMat Kden,Knom,CInom,CIden,Hden,mask32,Hnom1,Hnom2,Hnom3;
 
 	cv::pow(hx,2,hx2);
 	cv::pow(hy,2,hy2);
@@ -204,13 +212,7 @@ void PCL_analyser::calcCurvature(const cv::UMat & filt, cv::UMat & H, cv::UMat &
 	cv::subtract(hxx.mul(hyy),hxy.mul(hxy),Knom);
 	cv::divide(Knom,Kden,K);
 
-	//publish K
-	if (pub_K.getNumSubscribers() != 0)
-	{
-	K.convertTo(cv_K_ptr->image,CV_16UC1,1000.0);
-	cv_K_ptr->header.stamp=header.stamp;
-	pub_K.publish(cv_K_ptr->toImageMsg());
-	}
+
 //////// calculate H
 	//1+hx^2
 	cv::add(1.0,hx2,Hnom1);
@@ -225,13 +227,6 @@ void PCL_analyser::calcCurvature(const cv::UMat & filt, cv::UMat & H, cv::UMat &
 	cv::divide(Hnom1,Hden,H);
 	cv::multiply(0.5,H.clone(),H);
 
-	//publish H
-	if (pub_H.getNumSubscribers() != 0)
-	{
-	H.convertTo(cv_H_ptr->image,CV_16UC1,1000.0);
-	cv_H_ptr->header.stamp=header.stamp;
-	pub_H.publish(cv_H_ptr->toImageMsg());
-	}
 //////// calculate CI
 	cv::compare(K,0.0,mask32,cv::CMP_GE);
 	cv::pow(H.clone(),2,H);
@@ -250,13 +245,6 @@ void PCL_analyser::calcCurvature(const cv::UMat & filt, cv::UMat & H, cv::UMat &
 	CI.setTo(0.0,mask32);
 	cv::compare(CI,1.0,mask32,cv::CMP_GT);
 	CI.setTo(1.0,mask32);
-	//publish curvature
-	if (pub_curv.getNumSubscribers() != 0)
-	{
-	CI.convertTo(cv_CI_ptr->image,CV_16UC1,100.0);
-	cv_CI_ptr->header.stamp=header.stamp;
-	pub_curv.publish(cv_CI_ptr->toImageMsg());
-	}
 }
 void PCL_analyser::writeHist(float min, float max, int bins,cv::UMat CI)
 {
