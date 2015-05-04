@@ -55,7 +55,7 @@ LineReg::~LineReg()
 {
 //dtor
 }
-bool LineReg::operator()(cv::UMat  depthImg, cv::UMat &  H, cv::UMat & CI, std::vector<cv::Rect> & rectangles, std::vector<cv::Vec4f> &  lines, cv_bridge::CvImagePtr & cv_input_ptr, const lsd_slam_viewer::keyframeMsgConstPtr &frameMsg, const tum_ardrone::filter_stateConstPtr &poseMsg)
+bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vector<cv::Rect> rectangles, std::vector<cv::Vec4f>  lines, cv_bridge::CvImagePtr cv_input_ptr, const lsd_slam_viewer::keyframeMsgConstPtr frameMsg, const tum_ardrone::filter_stateConstPtr poseMsg, pcl::PointCloud<pcl::PointXYZ>::Ptr& planeCloud, Eigen::Affine3f& pose)
 {
 ///
 /// \brief  Accepts the data and fusions it to expell candidates
@@ -81,19 +81,35 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat &  H, cv::UMat & CI, std::
 	float cxi=-frameMsg->cx * fxi;
 	float cyi=-frameMsg->cy *fyi;
 	cv::Mat linesImg, canImg;
-	//copy the cv_bridge instance to a cv::Mat if there are subscribers
 	if(pub_det.getNumSubscribers() != 0)
 			linesImg=cv_input_ptr->image.clone();
 
 	if(pub_can.getNumSubscribers() != 0)
 		canImg=cv_input_ptr->image.clone();
 
+	Eigen::Matrix4f trans =Eigen::Matrix4f::Identity();
+	Eigen::AngleAxisd rotxAngle(-CV_PI/2.0, Eigen::Vector3d::UnitX());
+	Eigen::AngleAxisd rotzAngle(-CV_PI/2.0, Eigen::Vector3d::UnitZ());
+	Eigen::AngleAxisd rollAngle(poseMsg->roll, Eigen::Vector3d::UnitZ());
+	Eigen::AngleAxisd yawAngle(poseMsg->yaw, Eigen::Vector3d::UnitY());
+	Eigen::AngleAxisd pitchAngle(poseMsg->pitch, Eigen::Vector3d::UnitX());
+
+	Eigen::Quaternion<double> q = rollAngle * yawAngle * pitchAngle*rotzAngle*rotxAngle;
+	trans.block<3,3>(0,0) = q.matrix().cast<float>();
+	trans(0,3)=poseMsg->x;
+	trans(1,3)=poseMsg->y;
+	trans(2,3)=poseMsg->z;
+	Sophus::Sim3f camToWorld;
+	memcpy(camToWorld.data(), frameMsg->camToWorld.data(), 7*sizeof(float));
+	pose = camToWorld.matrix();
 	tbb::parallel_for_each(candidates.begin(),candidates.end(),[&](Candidate & can){
 		getParallelLines(can, depthLines);
 		if(can.nmbrOfLines==0)
 			return;
 		get3DLines(can, depthImg.getMat(cv::ACCESS_READ), curv_weight.getMat(cv::ACCESS_READ), H.getMat(cv::ACCESS_READ), fxi, fyi, cxi, cyi);
-		getPlane(can, linesImg, canImg, poseMsg);
+		if(can.lineInliers.empty())
+			return;
+		getPlane(can, linesImg, canImg, trans);
 		ROS_INFO("process candidate");
 	});
 	if(!linesImg.empty()){
@@ -104,21 +120,28 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat &  H, cv::UMat & CI, std::
 		cv_bridge::CvImage cv_can(cv_input_ptr->header,"bgr8", canImg);
 		pub_can.publish(cv_can.toImageMsg());
 	}
+	candidates.erase(remove_if(candidates.begin(),candidates.end(),[](Candidate& can){return can.nmbrOfLines==0;}),candidates.end());
+	for(auto can:candidates)
+	{
+		pcl::PointCloud<pcl::PointXYZ> temp(*can.cloud,can.planeInliers);
+		*planeCloud+=temp;
+	}
+	if(candidates.size()>0)
+		return true;
 	return false;
 }
 void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLines)
 {
+/// \brief Get the lines that are parallel with each other
 
-		//get lines that intersect with rectangle
 		can.lines.reserve(depthLines.size());
-		//copy_if(depthLines.begin(),depthLines.end(),back_inserter(can.lines),[&can,this](DepthLine& line){ROS_INFO_STREAM("test" << can.lines.size()); return SegmentIntersectRectangle(can.rectangle, line.line);});
+/// get lines that intersect with rectangle
 		for(auto lineit = depthLines.begin();lineit != depthLines.end(); lineit++)
 		{
 			if(SegmentIntersectRectangle(can.rectangle, lineit->line))
 				can.lines.push_back(*lineit);
 		}
-		//can.lines.resize(std::distance(can.lines.begin(),it));
-		//calculate rico
+/// calculate rico of each line
 		for_each(can.lines.begin(),can.lines.end(),[](DepthLine & line){line.rico=std::abs((line.line[3]-line.line[1])/(line.line[2]-line.line[0]));});
 		int iter(0),maxit(10);
 		auto maybeinliers=can.lines;
@@ -167,11 +190,20 @@ void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLi
 		}
 
 }
-void LineReg::get3DLines(Candidate & can,cv::Mat depthImg, cv::Mat curv_weight,cv::Mat meanCurvature, float & fxi, float & fyi, float & cxi, float & cyi)
+void LineReg::get3DLines(Candidate& can,const cv::Mat& depthImg,const cv::Mat& curv_weight, const cv::Mat& meanCurvature, float & fxi, float & fyi, float & cxi, float & cyi)
 {
 ROS_INFO("getting lines");
-	//get points from lines and depthImage
-		//set line properties
+/// \brief get 3D points from lines and depthImage.
+/// @param[in] can
+/// @param[in] depthImg
+/// @param[in] curv_weight
+/// @param[in] meanCurvature
+/// @param[in] fxi
+/// @param[in] fyi
+/// @param[in] cxi
+/// @param[in] cyi
+
+/// set line properties
 	for(auto it = can.lines.begin(); it != can.lines.end();it++)
 	{
 		cv::LineIterator line_it(depthImg,cv::Point(it->line[0],it->line[1]),cv::Point(it->line[2],it->line[3]));
@@ -198,7 +230,7 @@ ROS_INFO("getting lines");
 		it->curvature/=nmbr;
 		if(it->points.size()<10)
 			continue;
-	// created RandomSampleConsensus object and compute the appropriated model
+/// created RandomSampleConsensus object and compute the line model
 	pcl::SampleConsensusModelLine<pcl::PointXYZ>::Ptr model_l (new pcl::SampleConsensusModelLine<pcl::PointXYZ> (can.cloud,it->points));
 	pcl::RandomSampleConsensus<pcl::PointXYZ> ransac (model_l);
 	ransac.setDistanceThreshold (.01);
@@ -207,29 +239,20 @@ ROS_INFO("getting lines");
 	can.lineInliers.insert(can.lineInliers.end(),it->inliers.begin(),it->inliers.end());
 	}
 }
-void LineReg::getPlane(Candidate & can, cv::Mat & linesImg, cv::Mat & canImg, const tum_ardrone::filter_stateConstPtr &poseMsg)
+void LineReg::getPlane(Candidate& can, cv::Mat& linesImg, cv::Mat& canImg, const Eigen::Matrix4f& trans)
 {
-	if(can.lineInliers.empty())
-		return;
+/// \brief Do robust estimation from the plane that virtually lays on the staircase
+/// @param[in] can 
+/// @param[out] linesImg
+/// @param[out] canImg
+/// @param[in] trans
+
 	pcl::PointCloud<pcl::PointXYZ> ekfcloud;
-	Eigen::Matrix4f trans =Eigen::Matrix4f::Identity();
-	Eigen::AngleAxisd rotxAngle(-CV_PI/2.0, Eigen::Vector3d::UnitX());
-	Eigen::AngleAxisd rotzAngle(-CV_PI/2.0, Eigen::Vector3d::UnitZ());
-	Eigen::AngleAxisd rollAngle(poseMsg->roll, Eigen::Vector3d::UnitZ());
-	Eigen::AngleAxisd yawAngle(poseMsg->yaw, Eigen::Vector3d::UnitY());
-	Eigen::AngleAxisd pitchAngle(poseMsg->pitch, Eigen::Vector3d::UnitX());
-
-	Eigen::Quaternion<double> q = rollAngle * yawAngle * pitchAngle*rotzAngle*rotxAngle;
-	trans.block<3,3>(0,0) = q.matrix().cast<float>();
-	trans(0,3)=poseMsg->x;
-	trans(1,3)=poseMsg->y;
-	trans(2,3)=poseMsg->z;
-
 	pcl::transformPointCloud(*can.cloud,ekfcloud,trans);
 	pcl::SampleConsensusModelPlane<pcl::PointXYZ>::Ptr model_p (new pcl::SampleConsensusModelPlane<pcl::PointXYZ> (can.cloud, can.lineInliers));
 	Eigen::VectorXf coefficients;
 	pcl::RandomSampleConsensus<pcl::PointXYZ> ransac (model_p);
-	ransac.setDistanceThreshold (.01);
+	ransac.setDistanceThreshold (.02);
 	ransac.computeModel();
 	ransac.getInliers(can.planeInliers);
 	ransac.getModelCoefficients(coefficients);
@@ -237,28 +260,32 @@ void LineReg::getPlane(Candidate & can, cv::Mat & linesImg, cv::Mat & canImg, co
 	if(can.angle > CV_PI/2.0f)
 		can.angle-=CV_PI/2.0f;
 	ROS_INFO_STREAM("angle (deg) " <<  can.angle*180.0f/CV_PI);
-	if(can.angle<minStairAngle || can.angle>maxStairAngle)
+	if(can.angle<minStairAngle || can.angle>maxStairAngle){
+		can.nmbrOfLines=0;
 		return;
+	}
 	if(!canImg.empty())
 	{
 		cv::rectangle(canImg, can.rectangle, cv::Scalar(0,255,0));
-		std::stringstream first, second, third;
-		first << "angle: " << can.angle*180.0/CV_PI;
-		second << "nmbr of lines: " << can.nmbrOfLines;
-		third << "MSE: "<< can.bestMSE;
+		std::stringstream data;
+		data << "angle: " << can.angle*180.0/CV_PI << "\n"
+			 << "nmbr of lines: " << can.nmbrOfLines << "\n"
+			<< "ratio: " << static_cast<float>(can.planeInliers.size())/static_cast<float>(can.lineInliers.size()) << "\n"
+			<< "MSE: "<< can.bestMSE << "\n"
+			<< "sqew: "<< coefficients(1) << "\n";
 		int baseline=0;
 		cv::Point origin(can.rectangle.x,can.rectangle.y);
-		cv::Size textSize = cv::getTextSize(first.str(), cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
-		origin+=cv::Point(0,baseline+1+ textSize.height);
-		cv::putText(canImg, first.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
-
-		textSize = cv::getTextSize(second.str(), cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
-		origin+=cv::Point(0,baseline+1+textSize.height );
-		cv::putText(canImg, second.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
-
-		textSize = cv::getTextSize(third.str(), cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
-		origin+=cv::Point(0,baseline+1+textSize.height);
-		cv::putText(canImg, third.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
+		std::string s = data.str();
+		std::string delimiter = "\n";
+		size_t pos = 0;
+		std::string token;
+		while ((pos = s.find(delimiter)) != std::string::npos) {
+			token = s.substr(0, pos);
+			cv::Size textSize = cv::getTextSize(token, cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseline);
+			origin+=cv::Point(0,baseline+1+ textSize.height);
+			cv::putText(canImg, token, origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
+			s.erase(0, pos + delimiter.length());
+		}
 	}
 
 	if(!linesImg.empty())
@@ -273,6 +300,10 @@ void LineReg::getPlane(Candidate & can, cv::Mat & linesImg, cv::Mat & canImg, co
 }
 bool LineReg::SegmentIntersectRectangle(cv::Rect& rectangle, cv::Vec4f& line)
 {
+///
+/// \brief Check if a line intersects with a rectangle.
+/// @param[in] rectangle a rectangle defined by origin and size
+/// @param[in] line line defined by begin and endpoint
 double a_p1x = static_cast<double>(line[0]);
 double a_p1y = static_cast<double>(line[1]);
 double a_p2x = static_cast<double>(line[2]);
@@ -282,7 +313,7 @@ double a_rectangleMinY = static_cast<double>(rectangle.y);
 double a_rectangleMaxX = static_cast<double>(rectangle.x+rectangle.width);
 double a_rectangleMaxY = static_cast<double>(rectangle.y+rectangle.height);
 
-    // Find min and max X for the segment
+/// Find min and max X for the segment
 
     double minX = a_p1x;
     double maxX = a_p2x;
@@ -293,7 +324,7 @@ double a_rectangleMaxY = static_cast<double>(rectangle.y+rectangle.height);
       maxX = a_p1x;
     }
 
-    // Find the intersection of the segment's and rectangle's x-projections
+/// Find the intersection of the segment's and rectangle's x-projections
 
     if(maxX > a_rectangleMaxX)
     {
@@ -304,13 +335,13 @@ double a_rectangleMaxY = static_cast<double>(rectangle.y+rectangle.height);
     {
       minX = a_rectangleMinX;
     }
-
-    if(minX > maxX) // If their projections do not intersect return false
+/// If their projections do not intersect return false
+    if(minX > maxX) 
     {
       return false;
     }
 
-    // Find corresponding min and max Y for min and max X we found before
+/// Find corresponding min and max Y for min and max X we found before
 
     double minY = a_p1y;
     double maxY = a_p2y;
@@ -332,7 +363,7 @@ double a_rectangleMaxY = static_cast<double>(rectangle.y+rectangle.height);
       minY = tmp;
     }
 
-    // Find the intersection of the segment's and rectangle's y-projections
+/// Find the intersection of the segment's and rectangle's y-projections
 
     if(maxY > a_rectangleMaxY)
     {
@@ -343,8 +374,8 @@ double a_rectangleMaxY = static_cast<double>(rectangle.y+rectangle.height);
     {
       minY = a_rectangleMinY;
     }
-
-    if(minY > maxY) // If Y-projections do not intersect return false
+/// If Y-projections do not intersect return false
+    if(minY > maxY)
     {
       return false;
     }

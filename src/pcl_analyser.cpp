@@ -10,26 +10,26 @@
 #include "sophus/sim3.hpp"
 #include <algorithm>
 #include <opencv2/opencv.hpp>
-#include "opencv2/core/utility.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <chrono>
 
 
 struct framedist{
 	framedist(std::shared_ptr<KeyFrame>& key,Sophus::Sim3f& camToWorld):frame(key),camcenter(0.0f,0.0f,1.0f,1.0f)
 	{
+/// \brief Default constructor. Initializes the distance between the liveframe and this keyframe. 
 		soph = (camToWorld.inverse()*frame->camToWorld).matrix();
+		Eigen::Vector4f camcenterlive;
 		camcenterlive = soph*camcenter;
 		dist=(camcenterlive-camcenter).squaredNorm();
 		
 	}
 	std::shared_ptr<KeyFrame> frame;
-	Eigen::Vector4f camcenter,camcenterlive;
-	float dist;
+	Eigen::Vector4f camcenter;/// The homogenious coordinates of a point in meter in front of the camera center.
 	Eigen::Matrix4f soph;
+	float dist;/// distance between the keyframe and the liveframe
 	bool operator<(const framedist& rhs) const
 		{return dist < rhs.dist;}
 };
@@ -48,13 +48,21 @@ PCL_analyser::~PCL_analyser()
 }
 
 
-void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::vector<std::shared_ptr<KeyFrame>> & keyframes, cv::UMat & filt, cv::UMat & H, cv::UMat & CI)
+void PCL_analyser::operator ()(const lsd_slam_viewer::keyframeMsgConstPtr& msg, std::vector<std::shared_ptr<KeyFrame>>& keyframes, cv::UMat& filt, cv::UMat& H, cv::UMat& CI)
 {
+///
+/// \brief Get the depth image and the curvature in the passed liveframe.
+/// @param[in] msg keyframe message
+/// @param[in] keyframes vector containing smart pointers to the keyframes
+/// @param[in] filt filtered depth image
+/// @param[in] H mean curvature
+/// @param[out] CI image containing pixelwise curvature index
 		Sophus::Sim3f camToWorld;
 		memcpy(camToWorld.data(), msg->camToWorld.data(), 7*sizeof(float));
 		int my_scaleDepthImage= static_cast<int> (scaleDepthImage +0.5f);
 		int width=my_scaleDepthImage*msg->width;
 		int height=my_scaleDepthImage*msg->height;
+/// Get camera parameters from the liveframe.
 		float fx=my_scaleDepthImage*msg->fx;
 		float fy=my_scaleDepthImage*msg->fy;
 		float cx=my_scaleDepthImage*msg->cx;
@@ -63,6 +71,7 @@ void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::ve
 		cv::Mat depthImg(height,width,CV_32F);
 		std::vector<framedist> mykeyframes;
 		mykeyframes.reserve(keyframes.size());
+/// Initialize the vector that permits sorting the keyframes by distance to the camera.
 		for(auto frame:keyframes)
 		{
 			mykeyframes.push_back(framedist(frame,camToWorld));
@@ -109,14 +118,15 @@ void PCL_analyser::operator ()(lsd_slam_viewer::keyframeMsgConstPtr msg, std::ve
 void PCL_analyser::getDepthImage(std::vector<framedist>& mykeyframes, const float& fx, const float& fy, const float& cx, const float& cy, cv::Mat & depthImg)
 {
 ///
-/// \brief Generates a depth image from the received keyframes
+/// \brief Generates a depth image from the received keyframes.
 ///
 ///@param[in] keyframes all the currently captured keyframes
-///@param[in] fx
-///@param[in] fy
-///@param[in] cx
-///@param[in] cy
+///@param[in] fx focal length in x direction
+///@param[in] fy focal length in y direction
+///@param[in] cx first ordinate of the camera’s principal point
+///@param[in] cy second ordinate of the camera’s principal point
 ///@param[out] depthImg the generated depth image
+///
 /// The function gets the currently received keyframes from the keyFrameGraph instance and transforms them to
 /// coordinates in the liveframe axes. This set of accumulated points is then projected using the camera parameters
 /// to get a depth image that corresponds with the image captured by camera.
@@ -125,27 +135,22 @@ void PCL_analyser::getDepthImage(std::vector<framedist>& mykeyframes, const floa
 	int x,y;
     	PointCloud::Ptr cloud(new PointCloud), depth(new PointCloud);
 	depthImg.setTo(maxZ);
-	//need to insert function that calculates clouds that are in region of interest
-
+/// Get the keyframes closest to the liveframe.
 	std::sort(mykeyframes.begin(),mykeyframes.end());
-	int k = std::min(10,static_cast<int>(mykeyframes.size()));
+	int k = std::min(15, static_cast<int>(mykeyframes.size()));
 	mykeyframes.erase(mykeyframes.begin()+k,mykeyframes.end());
 
 	/*std::random_shuffle(mykeyframes.begin(),mykeyframes.end());
 	k = std::min(5,static_cast<int>(mykeyframes.size()));
 	mykeyframes.erase(mykeyframes.begin()+k,mykeyframes.end());*/
-	auto t1 = std::chrono::high_resolution_clock::now();
+/// Get each keyframe in liveframe pose.
 	for(std::size_t i=0;i<mykeyframes.size();i++)
 	{
-		//get keyframe in analysed keyframe
 		pcl::transformPointCloud(*mykeyframes[i].frame->getPCL(),*depth,mykeyframes[i].soph);
 		*cloud+=*depth;
 		ROS_INFO_STREAM("cloud: "<< mykeyframes[i].frame->id);
 	}
-  auto t2 = std::chrono::high_resolution_clock::now();
-
-ROS_INFO_STREAM("acumulating "<< k << "clouds took "<< std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() <<" milisecond(s).");
-t1 = std::chrono::high_resolution_clock::now();
+/// Project the accumulated cloud to a 2D image.
 	for(auto it = cloud->begin(); it != cloud->end(); it++){ 
 		if(it->z>maxZ|| it->z<minZ)
 			continue;
@@ -157,15 +162,16 @@ t1 = std::chrono::high_resolution_clock::now();
 		depthImg.at<float>(y,x)=std::min(depthImg.at<float>(y,x),it->z);
     	}
 
-t2 = std::chrono::high_resolution_clock::now();
-ROS_INFO_STREAM("projection took "<<  std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() <<" milisecond(s).");
-
 }
 void PCL_analyser::filterDepth(const cv::Mat& depthImg, const int& my_scaleDepthImage, cv::UMat& filt)
 {
 ///
 /// \brief applies required filtering and resizes the image back to the original size.
-/// Applies first median filter to remove outliers and afterwards region growing to file the holes. Gaussian smoothing is applied to make the derivatis stable.
+/// @param[in] depthImg The depth image generated by combining different keyframes.
+/// @param[in] my_scaleDepthImage the scaling applied when projecting the image
+/// @param[out] filt the filtered depth image
+///
+///  Gaussian smoothing is applied to make the derivatis stable.
 ///
 	cv::UMat filt_t, mask;
 	cv::compare(depthImg,maxZ,mask,cv::CMP_EQ);
@@ -175,15 +181,20 @@ void PCL_analyser::filterDepth(const cv::Mat& depthImg, const int& my_scaleDepth
 	cv::resize(filt.clone(),filt,cv::Size(0,0),1.0f/my_scaleDepthImage,1.0f/my_scaleDepthImage,cv::INTER_AREA);
 	cv::GaussianBlur(filt.clone(),filt,cv::Size(gauss_size,gauss_size),gauss_sigma);
 }
-void PCL_analyser::calcCurvature(const cv::UMat & filt, const float& fx, const float& fy, const int& my_scaleDepthImage, cv::UMat & H, cv::UMat & K, cv::UMat & CI)
+void PCL_analyser::calcCurvature(const cv::UMat& filt, const float& fx, const float& fy, const int& my_scaleDepthImage, cv::UMat& H, cv::UMat& K, cv::UMat& CI)
 {
 ///
-/// \brief calc the curvature using the constructed depth image.
-///
-/// Calculates filter kernels and applies them. Secondly calculates Gaussian and Mean curvature. After that these values are used to calculate the curvature index. The different cases (K \geq 0, K < 0) are handled using masks.
+/// \brief Calculate the curvature using the constructed and filtered depth image.
+/// @param[in] filt filtered depth image
+/// @param[in] fx focal length in x direction
+/// @param[in] fy focal length in y direction
+/// @param[in] my_scaleDepthImage the scaling applied when projecting the image
+/// @param[out] H mean curvature
+/// @param[out] K Gaussian curvature
+/// @param[out] CI image containing pixelwise curvature index
 ///
 
-//create kernels
+/// Create kernels for calculating the different derivatives with convolutive filters
 	int ksize=5;
 	cv::UMat kx10, ky10, kx01,ky01,kx11,ky11,kx20,ky20,kx02,ky02;
 	cv::getDerivKernels(kx10, ky10, 1, 0, ksize, true, CV_64F );
@@ -191,14 +202,14 @@ void PCL_analyser::calcCurvature(const cv::UMat & filt, const float& fx, const f
 	cv::getDerivKernels(kx11, ky11, 1, 1, ksize, true, CV_64F );
 	cv::getDerivKernels(kx20, ky20, 2, 0, ksize, true, CV_64F );
 	cv::getDerivKernels(kx02, ky02, 0, 2, ksize, true, CV_64F );
-//filter image
+/// Apply the filter kernels to the image.
 	cv::UMat hx, hy, hxx, hyy, hxy,hx2,hy2,normx,normy;
 	cv::sepFilter2D(filt, hx, CV_64F, kx10, ky10);
 	cv::sepFilter2D(filt, hy, CV_64F, kx01, ky01);
 	cv::sepFilter2D(filt, hxy, CV_64F, kx11, ky11);
 	cv::sepFilter2D(filt, hxx, CV_64F, kx20, ky20);
 	cv::sepFilter2D(filt, hyy, CV_64F, kx02, ky02);
-//normalize derivatives
+/// Normalize derivatives to get uniform dx en dy.
 	cv::divide(static_cast<double>(fx/my_scaleDepthImage),filt,normx,1.0,CV_64F);
 	cv::divide(static_cast<double>(fy/my_scaleDepthImage),filt,normy,1.0,CV_64F);
 	cv::multiply(normx,hx,hx);
@@ -210,23 +221,23 @@ void PCL_analyser::calcCurvature(const cv::UMat & filt, const float& fx, const f
 
 	cv::pow(hx,2,hx2);
 	cv::pow(hy,2,hy2);
-//////// calculate K
-	//1+hx^2 + hy^2
+/// calculate K
+/// > 1+hx^2 + hy^2
 	cv::addWeighted(hx2,1.0,hy2,1.0,1.0,Kden);
 	//power with non int values need treatment for negative values because it takes the power of the absolute value, this is not needed here as argument is always positive.
 	cv::pow(Kden,1.5,Hden);
 	cv::pow(Kden.clone(),2,Kden);
-	//hxx*hyy-hxy^2
+/// > hxx*hyy-hxy^2
 	cv::subtract(hxx.mul(hyy),hxy.mul(hxy),Knom);
 	cv::divide(Knom,Kden,K);
 
 
-//////// calculate H
-	//1+hx^2
+/// calculate H
+/// > 1+hx^2
 	cv::add(1.0,hx2,Hnom1);
-	//2*hx*hy*hxy
+/// > 2*hx*hy*hxy
 	cv::multiply(2.0,hx.mul(hy).mul(hxy),Hnom2);
-	//1+hy^2
+/// > 1+hy^2
 	cv::add(1.0,hy2,Hnom3);
 	//(1+hx^2)*hyy+2*hx*hy*hxy
 	cv::subtract(Hnom1.mul(hyy),Hnom2,Hnom1);
@@ -235,17 +246,17 @@ void PCL_analyser::calcCurvature(const cv::UMat & filt, const float& fx, const f
 	cv::divide(Hnom1,Hden,H);
 	cv::multiply(0.5,H.clone(),H);
 
-//////// calculate CI
+/// calculate CI
 	cv::compare(K,0.0,mask32,cv::CMP_GE);
 	cv::pow(H.clone(),2,H);
 	CInom=H.clone();
-	//H^2 - K
+/// > H^2 - K
 	cv::subtract(CInom.clone(),K,CInom,mask32);
 	double eps=1.0;
-	//H-eps
+/// > H-eps
 	cv::subtract(H,eps,CIden);
 	cv::bitwise_not(mask32,mask32);
-	//H-eps-K
+/// > H-eps-K
 	cv::subtract(CIden.clone(),K,CIden,mask32);
 	cv::divide(CInom,CIden,CI);
 	//writeHist(-20.0f,10.0f,48,CI);
@@ -254,11 +265,14 @@ void PCL_analyser::calcCurvature(const cv::UMat & filt, const float& fx, const f
 	cv::compare(CI,1.0,mask32,cv::CMP_GT);
 	CI.setTo(1.0,mask32);
 }
-void PCL_analyser::writeHist(float min, float max, int bins,cv::UMat CI)
+void PCL_analyser::writeHist(const float& min, const float& max,const int& bins,const cv::UMat& CI)
 {
 ///
 /// \brief Writes histogram to csv file for debug purposes.
-///
+/// @param[in] min the minimal value in the histogram
+/// @param[in] max the maximum value in the histogram
+/// @param[in] bins the number of bins in the histogram
+/// @param[in] CI image describing the pixelwise curvature
 	float ciranges[] = { min, max};
 	const float* ranges[] ={ciranges};
 	cv::MatND hist;

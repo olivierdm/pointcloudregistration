@@ -19,6 +19,8 @@
 #include <iostream>
 #include <memory>
 #include "tbb/task_group.h"
+#include "tbb/parallel_invoke.h"
+
 
 std::unique_ptr<PCL_registration> registrar;
 std::unique_ptr<PCL_analyser> pcl_analyse;
@@ -30,12 +32,16 @@ tbb::task_group g;
 bool firstKF=false;
 void frameCb(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
+/// \brief Handles the liveframes and the keyframes to construct the keyframe graph.
+/// @param[in] msg liveframe message or keyframe message
 	if(msg->time > lastFrameTime ) return;
 	firstKF=true;
 	registrar->addFrameMsg(msg);
 }
 void graphCb(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 {
+/// \brief Handles graph messages to update the constraints and pose of the keyframes already in the graph.
+/// @param[in] msg keyframe graph message
 	registrar->addGraphMsg(msg);
 }
 void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::keyframeMsgConstPtr &frameMsg, const tum_ardrone::filter_stateConstPtr &poseMsg)
@@ -46,17 +52,15 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 /// @param[in] frameMsg lsdslam liveframe
 /// @param[in] poseMsg pose information from TUM_ardrone
 
+/// Initialize variables that will be passed by reference.
 	cv::UMat depthImg, H, CI;
 	std::vector<cv::Rect> rectangles;
 	std::vector<cv::Vec4f> lines;
 	cv_bridge::CvImagePtr cv_input_ptr;
-	pcl::PointCloud<pcl::PointXYZ>::Ptr canPlane;
-	Eigen::Affine3f pose;
+	if(registrar->addFrameMsg(frameMsg))
+		return;
 
-	//pass the data and do processing
-	ROS_DEBUG("in callback");
-	std::vector<std::shared_ptr<KeyFrame>> keyframes = graph->getFrames();
-	g.run([&]{(*pcl_analyse)(frameMsg, keyframes, depthImg, H, CI);});
+/// Retrieve the image from the image message.
 	try{
 		cv_input_ptr = cv_bridge::toCvCopy(imgMsg, sensor_msgs::image_encodings::BGR8);
 	}
@@ -64,34 +68,45 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 		ROS_ERROR_STREAM("cv_bridge exception: " << e.what());
 		return;
 	}
-	(*visor)(cv_input_ptr, poseMsg, rectangles, lines);
-	g.wait();
-	if((*stairs)(depthImg, H, CI, rectangles, lines, cv_input_ptr, frameMsg, poseMsg));
-		registrar->drawPlane(canPlane, pose);
+/// Get the keyframes from the graph and pass the data to the PCL_analyser. Image processing is done in parallel
+	std::vector<std::shared_ptr<KeyFrame>> keyframes = graph->getFrames();
+	tbb::parallel_invoke([&]{(*pcl_analyse)(frameMsg, keyframes, depthImg, H, CI);},
+			[&]{(*visor)(cv_input_ptr, poseMsg, rectangles, lines);}
+	);
+
+/// Combine the data and attempt detection
+	g.run([=]{pcl::PointCloud<pcl::PointXYZ>::Ptr canPlane(new pcl::PointCloud<pcl::PointXYZ>);
+		Eigen::Affine3f pose;
+		if((*stairs)(depthImg, H, CI, rectangles, lines, cv_input_ptr, frameMsg, poseMsg, canPlane, pose))
+		registrar->drawPlane(canPlane, pose);});
 }
 
 int main( int argc, char** argv )
 {
-	//init ros
+///
+/// \brief Initialize the main program.
+/// @param[in] argc number of arguments passed
+/// @param[in] argv parameters passed to the main function, can contain parameters for ros initialisation
+
+/// Initialise ros, this needs to be done before adding subscribers.
 	ros::init(argc, argv, "registrar");
-	//init classes for input
+/// Initialise classes for handling the input.
 	graph = std::make_shared<KeyFrameGraph>();
 	registrar.reset(new PCL_registration(graph));
-	//init queu and handler for lsdslam messages
+/// Initialize queu and handler for lsdslam messages.
 	ros::CallbackQueue lsdqueue;
 	ros::NodeHandle lsdhandler;
 	lsdhandler.setCallbackQueue(&lsdqueue);
 	ros::Subscriber keyFrames_sub = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/keyframes"), 20, frameCb);
-	ros::Subscriber liveFrames_subl = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/liveframes"), 1, frameCb);	
+	//ros::Subscriber liveFrames_subl = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/liveframes"), 1, frameCb);	
 	ros::Subscriber graph_sub  = lsdhandler.subscribe(lsdhandler.resolveName("lsd_slam/graph"), 10, graphCb);
 	ros::AsyncSpinner lsdspinner(1, &lsdqueue);
 	lsdspinner.start();
-
-	//init classes for processing
+/// Initialize classes for processing.
 	stairs.reset(new LineReg());
 	visor.reset(new Vision());
 	pcl_analyse.reset(new PCL_analyser());
-	//init queu and 
+/// Initialize queu and handler for processing
 	ros::CallbackQueue processqueue;
 	ros::NodeHandle processhandler;
 	processhandler.setCallbackQueue(&processqueue);

@@ -12,7 +12,7 @@ class PCL_analyser
     public:
 		PCL_analyser();
 		virtual ~PCL_analyser();
-		void operator()(lsd_slam_viewer::keyframeMsgConstPtr, std::vector<std::shared_ptr<KeyFrame>>&, cv::UMat&, cv::UMat&, cv::UMat&);
+		void operator()(const lsd_slam_viewer::keyframeMsgConstPtr&, std::vector<std::shared_ptr<KeyFrame>>&, cv::UMat&, cv::UMat&, cv::UMat&);
     private:
 	ros::NodeHandle nh;
 	image_transport::ImageTransport it;
@@ -20,7 +20,7 @@ class PCL_analyser
 	void calcCurvature(const cv::UMat&, const float&, const float&, const int&, cv::UMat & , cv::UMat&, cv::UMat & );
 	void getDepthImage(std::vector<framedist>&, const float&, const float&, const float&, const float&, cv::Mat&);
 	void filterDepth(const cv::Mat&, const int&, cv::UMat&);
-	void writeHist(float,float,int,cv::UMat);
+	void writeHist(const float&, const float&, const int&, const cv::UMat&);
 };
 
 #endif // PCL_ANALYSER_H

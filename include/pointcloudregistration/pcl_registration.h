@@ -16,7 +16,7 @@ class PCL_registration
 	public:
 		PCL_registration(std::shared_ptr<KeyFrameGraph>&);
 		virtual ~PCL_registration();
-		void addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr);
+		bool addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr);
 		void addGraphMsg(lsd_slam_viewer::keyframeGraphMsgConstPtr);
 		void drawPlane(const pcl::PointCloud<pcl::PointXYZ>::Ptr&,const Eigen::Affine3f & );
 
