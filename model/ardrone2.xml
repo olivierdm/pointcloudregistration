@@ -1,0 +1,17 @@
+<robot name="ardrone2">
+     <link name="ardrone_base_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://pointcloudregistration/model/quadrotor_4.dae"/> 
+        </geometry>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://pointcloudregistration/model/quadrotor_4.stl"/>
+        </geometry>
+      </collision>
+    </link>
+</robot>
