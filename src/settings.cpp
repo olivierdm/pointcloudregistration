@@ -6,7 +6,7 @@
 /// Minimal distance to camera sensor in liveframe that will be considered.
 float	minZ=0.1f;
 /// Maximal distance from camera sensor in liveframe that will be considered.
-float	maxZ=4.0f;
+float	maxZ=2.0f;
 /// Factor that determines the size of depth image with respect to the visual image.
 float scaleDepthImage = 3.0f;
 /// The size of the structuring element in x direction
@@ -17,7 +17,7 @@ float gauss_sigma=2.0f;
 int gauss_size=5;
 double maxAngle = 8.0;
 /// minimum number of lines to withhold candidate
-unsigned int minLines = 10;
+unsigned int minLines = 5;
 /// minimum angle to be a stair
 float minStairAngle=0.35f;
 /// maximum angle to be a stair

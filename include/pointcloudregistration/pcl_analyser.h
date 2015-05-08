@@ -18,8 +18,8 @@ class PCL_analyser
 	image_transport::ImageTransport it;
 	image_transport::Publisher pub_depth,pub_depthf,pub_curv,pub_K,pub_H;
 	void calcCurvature(const cv::UMat&, const float&, const float&, const int&, cv::UMat & , cv::UMat&, cv::UMat & );
-	void getDepthImage(std::vector<framedist>&, const float&, const float&, const float&, const float&, cv::Mat&);
-	void filterDepth(const cv::Mat&, const int&, cv::UMat&);
+	void getDepthImage(std::vector<framedist>&, const float&, const float&, const float&, const float&, cv::UMat&);
+	void filterDepth(cv::UMat&, const int&, cv::UMat&);
 	void writeHist(const float&, const float&, const int&, const cv::UMat&);
 };
 

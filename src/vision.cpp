@@ -89,7 +89,6 @@ void Vision::detect(const cv_bridge::CvImagePtr& cv_input_ptr, cv::Mat& inputGra
 	if (pub_detect.getNumSubscribers() != 0)
 	{
 	cv_bridge::CvImage cv_det(cv_input_ptr->header,"bgr8",cv_input_ptr->image.clone());
-	ROS_INFO("trying to publish");
 	for( size_t i = 0; i < rectangles.size(); i++ )
 	{
 		cv::rectangle(cv_det.image, rectangles[i], cv::Scalar( 255, 0, 255 ), 4, 8, 0);

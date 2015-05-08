@@ -1,6 +1,7 @@
 #ifndef LINEREG_H
 #define LINEREG_H
 #include <ros/ros.h>
+#include <geometry_msgs/PointStamped.h>
 #include <Eigen/Geometry>
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
@@ -22,6 +23,7 @@ class LineReg
 	ros::NodeHandle nh;
 	image_transport::ImageTransport it;
 	image_transport::Publisher pub_det, pub_can;
+	ros::Publisher point_pub;
 	void getParallelLines(Candidate &, std::vector<DepthLine>&);
 	void get3DLines(Candidate &, const cv::Mat&, const cv::Mat&, const cv::Mat&, float&, float&, float&, float&);
 	void getPlane(Candidate &, cv::Mat&, cv::Mat&, const Eigen::Matrix4f&);
