@@ -1,5 +1,5 @@
 <robot name="ardrone2">
-     <link name="ardrone_base_link">
+     <link name="tum_base_link">
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0" />
         <geometry>

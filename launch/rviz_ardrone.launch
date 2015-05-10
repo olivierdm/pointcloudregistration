@@ -1,7 +1,7 @@
 <launch>
   		<param name="robot_description" textfile="$(find pointcloudregistration)/model/ardrone2.xml"/>
   		<param name="/use_sim_time" value="false"/>
-  		<node pkg="tf" type="static_transform_publisher" name="tf_cam_to_base" args="0 0 -0.21 -0.5 0.5 -0.5 -0.5 cam_front ardrone_map_base 100" />
+  		<node pkg="tf" type="static_transform_publisher" name="tf_cam_to_base" args="0.210 0 0.0 -0.5 0.5 -0.5 0.5 tum_base_link tum_base_frontcam 100" />
   		<node pkg="rviz" type="rviz" name="rviz_tum_ardrone"></node>
   		<node pkg="interactive_marker_tutorials" type="simple_marker.py" name="staircase_marker" />
 </launch>
