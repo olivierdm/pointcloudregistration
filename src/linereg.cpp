@@ -177,7 +177,7 @@ void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLi
 		auto maybeinliers=can.lines;
 		ROS_INFO_STREAM("size: "<< maybeinliers.size());
 		if(maybeinliers.size()<6)
-			continue;
+			return;
 		random_shuffle(maybeinliers.begin(),maybeinliers.end());
 		//auto randit=maybeinliers.begin();
 		float TH=10.0f;
@@ -290,7 +290,6 @@ void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLi
 }
 void LineReg::get3DLines(Candidate& can,const cv::Mat& depthImg,const cv::Mat& curv_weight, const cv::Mat& meanCurvature, float & fxi, float & fyi, float & cxi, float & cyi)
 {
-ROS_INFO("getting lines");
 /// \brief get 3D points from lines and depthImage.
 /// @param[in] can candidate with initialised rectangle
 /// @param[in] depthImg filtered depth image
@@ -302,6 +301,7 @@ ROS_INFO("getting lines");
 /// @param[in] cyi inverse second ordinate of the camera’s principal point
 
 /// set line properties
+ROS_INFO("getting 3D lines");
 	for(auto it = can.lines.begin(); it != can.lines.end();it++)
 	{
 		cv::LineIterator line_it(depthImg,cv::Point(it->line[0],it->line[1]),cv::Point(it->line[2],it->line[3]));
@@ -395,7 +395,7 @@ void LineReg::getPlane(Candidate& can, cv::Mat& linesImg, cv::Mat& canImg, const
 			cv::Vec4f line =can.lines[i].line;
 			cv::Scalar color(0, 255*can.lines[i].curvature, 255*(1.0f-can.lines[i].curvature));
 			cv::line(linesImg, cv::Point2f(line[0],line[1]), cv::Point2f(line[2],line[3]),color);
-			//cv::
+			cv::line(linesImg, cv::Point2f(line[0],line[1]),can.VP,cv::Scalar(255,0,0));
 		}
 	}
 }
