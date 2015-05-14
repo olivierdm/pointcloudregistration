@@ -135,7 +135,7 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 	if(candidates.size()>0){
 		geometry_msgs::PointStamped target;
 		target.header.stamp=ros::Time::now();
-		target.header.frame_id="cam_front";
+		target.header.frame_id="tum_base_frontcam";
 		pcl::PointCloud<pcl::PointXYZ> temp(*candidates[0].cloud,candidates[0].planeInliers);
 		target.point.x=0.0;
 		target.point.y=0.0;
