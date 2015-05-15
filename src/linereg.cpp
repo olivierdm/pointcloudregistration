@@ -136,22 +136,26 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 		geometry_msgs::PointStamped target;
 		target.header.stamp=ros::Time::now();
 		target.header.frame_id="tum_base_frontcam";
-		pcl::PointCloud<pcl::PointXYZ> temp(*candidates[0].cloud,candidates[0].planeInliers);
-		target.point.x=0.0;
-		target.point.y=0.0;
-		target.point.z=0.0;
-		pcl::PointXYZ targetpt=std::accumulate(temp.begin(), temp.end(), pcl::PointXYZ(1000.0,1000.0,1000.0), [](pcl::PointXYZ result, pcl::PointXYZ& point){
-			if(point.y< result.y){
-				result.x=point.x;
-				result.y=point.y;
-				result.z=point.z;
-			}
-			return result;
-		});
-		target.point.x=targetpt.x;
-		target.point.y=targetpt.y;
-		target.point.z=targetpt.z;
-		point_pub.publish(target);
+		for(auto can:candidates)
+		{
+			if(can.planeInliers.size()<20)
+				continue;
+			pcl::PointCloud<pcl::PointXYZ> temp(*can.cloud,can.planeInliers);
+			pcl::PointXYZ targetpt=std::accumulate(temp.begin(), temp.end(), pcl::PointXYZ(1000.0,1000.0,1000.0), [](pcl::PointXYZ result, pcl::PointXYZ& point){
+				if(point.y< result.y){
+					result.x=point.x;
+					result.y=point.y;
+					result.z=point.z;
+				}
+				return result;
+			});
+			if(targetpt.y==1000.0)
+				continue;
+			target.point.x=targetpt.x;
+			target.point.y=targetpt.y;
+			target.point.z=targetpt.z;
+			point_pub.publish(target);
+		}
 		return true;
 	}
 	return false;
@@ -160,132 +164,100 @@ void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLi
 {
 /// \brief Get the lines that are parallel with each other
 
-		can.lines.reserve(depthLines.size());
+	can.lines.reserve(depthLines.size());
 /// get lines that intersect with rectangle
-		for(auto lineit = depthLines.begin();lineit != depthLines.end(); lineit++)
-		{
-			if(SegmentIntersectRectangle(can.rectangle, lineit->line))
-				can.lines.push_back(*lineit);
-		}
+	for(auto lineit = depthLines.begin();lineit != depthLines.end(); lineit++)
+	{
+		if(SegmentIntersectRectangle(can.rectangle, lineit->line))
+			can.lines.push_back(*lineit);
+	}
 /// calculate rico of each line
-		//for_each(can.lines.begin(),can.lines.end(),[](DepthLine & line){line.rico=std::abs((line.line[3]-line.line[1])/(line.line[2]-line.line[0]));});
-		for_each(can.lines.begin(),can.lines.end(),[](DepthLine & line){
-			line.rico=(line.line[3]-line.line[1])/(line.line[2]-line.line[0]);
-			line.constant=line.line[1]-line.rico*line.line[0];
-		});
+	for_each(can.lines.begin(),can.lines.end(),[](DepthLine & line){
+		line.rico=(line.line[3]-line.line[1])/(line.line[2]-line.line[0]);
+		line.constant=line.line[1]-line.rico*line.line[0];
+	});
 
-		auto maybeinliers=can.lines;
-		ROS_INFO_STREAM("size: "<< maybeinliers.size());
-		if(maybeinliers.size()<6)
-			return;
-		random_shuffle(maybeinliers.begin(),maybeinliers.end());
-		//auto randit=maybeinliers.begin();
-		float TH=10.0f;
-		float eps=0.001f;
-		int iter(0),maxit(maybeinliers.size());
-		unsigned int maxinliers(0);
-	ROS_INFO("before while");
-		while(iter<maxit)
-		{
-			iter++;
-			std::vector<DepthLine> alsoinliers;
-			DepthLine line1=maybeinliers[0];
-			DepthLine line2=maybeinliers[1];
-			std::rotate(maybeinliers.begin(),maybeinliers.begin()+2,maybeinliers.end());	
-			if(line1.rico==line2.rico)
-				continue;
-			double xmod= (line1.constant-line2.constant)/(line2.rico-line1.rico);
-			double ymod= xmod*line1.rico+line1.constant;
-
-			//ROS_INFO_STREAM("intersection: "<< xmod << ", " << ymod);
-
-			copy_if(maybeinliers.begin(),maybeinliers.end(),back_inserter(alsoinliers),[&xmod,ymod,&TH](DepthLine & line ){
-				double ymay= xmod * line.rico+line.constant;
-				return std::abs(ymay-ymod)<TH;
-			});
-			std::vector<cv::Point2d> intersections;
-			intersections.reserve((std::pow(alsoinliers.size(),2)-alsoinliers.size())/2.0);
-			for(auto it = alsoinliers.begin(); it+1 != alsoinliers.end(); it++)
-			{
-				std::for_each(it+1,alsoinliers.end(),[&intersections,&it](DepthLine& line){
-					double x= (it->constant-line.constant)/(line.rico-it->rico);
-					intersections.emplace_back(x, it->rico*x+it->constant);
-				});
-			}
-			cv::Point2d sum=accumulate(intersections.begin(),intersections.end(),cv::Point2d(0.0,0.0),[](cv::Point2d& result, cv::Point2d& point){return result + point;});
-			cv::Point2d mean= cv::Point2d(sum.x/intersections.size(), sum.y/intersections.size());
-			double SSE= accumulate(intersections.begin(),intersections.end(),0.0,[&mean](double result, cv::Point2d point){return result+pow(mean.x-point.x,2)+pow(mean.y-point.y,2);});
-			double MSE=SSE/intersections.size();
-			if(maybeinliers.size() == alsoinliers.size()){
-				if(maybeinliers.size()>minLines)
-				{
-				ROS_INFO("all are inliers");
-				can.nmbrOfLines=alsoinliers.size();
-				can.bestMSE=MSE;
-				can.VP=mean;
-				}
-				break;
-			}
-			if(alsoinliers.size()>minLines )
-			{
-				ROS_INFO_STREAM("SSE: "<< SSE << " size: "<< alsoinliers.size() << " model: " << mean.x << ", " << mean.y);
-				if(alsoinliers.size()>maxinliers)
-				{
-					maxinliers=alsoinliers.size();
-					ROS_INFO_STREAM("maxinliers "<< maxinliers);
-					maxit=static_cast<int>(std::log(eps)/std::log(1.0f-static_cast<float>(maxinliers)/static_cast<float>(maybeinliers.size()))+0.5f);
-				}
-				if(MSE<can.bestMSE)
-				{
-					ROS_INFO_STREAM("update_MSE ("<< MSE << ") ,maxit "<< maxit);
-					can.bestMSE=MSE;
-					can.nmbrOfLines+=alsoinliers.size();
-					can.lines=alsoinliers;
-					can.VP=mean;
-				}
-			}
-
+	auto maybeinliers=can.lines;
+	ROS_INFO_STREAM("size: "<< maybeinliers.size());
+	if(maybeinliers.size()<minLines)
+		return;
+	random_shuffle(maybeinliers.begin(),maybeinliers.end());
+	double TH=200.0f;
+	float eps=0.001f;
+	int iter(0),maxit(maybeinliers.size());
+	std::vector<DepthLine> alsoinliers;
+	alsoinliers.reserve(maybeinliers.size());
+	unsigned int maxinliers(0);
+ROS_INFO("before while");
+	while(iter<maxit)
+	{
+		iter++;
+		alsoinliers.clear();
+		DepthLine line1=maybeinliers[0];
+		DepthLine line2=maybeinliers[1];
+		std::rotate(maybeinliers.begin(),maybeinliers.begin()+1,maybeinliers.end());	
+		if(line1.rico==line2.rico){
+			ROS_INFO("lines are exactly parallel");
+			continue;
 		}
-	ROS_INFO("after while");
-		/*while(iter<maxit&&randit!=maybeinliers.end())
-		{
-			std::vector<DepthLine> alsoinliers;
-			float mayberico = randit->rico;
-			randit++;
-			copy_if(maybeinliers.begin(),maybeinliers.end(),back_inserter(alsoinliers),[&mayberico,&TH](DepthLine & line ){return std::abs(line.rico-mayberico)<TH;});
+		cv::Point2d mod;
+		mod.x= (line1.constant-line2.constant)/(line2.rico-line1.rico);
+		mod.y= mod.x*line1.rico+line1.constant;
 
-			float sum = accumulate(alsoinliers.begin(),alsoinliers.end(),0.0f,[](float result, DepthLine& line){return result+line.rico;});
-			float modelrico = sum/alsoinliers.size();
-			float SSE= accumulate(alsoinliers.begin(),alsoinliers.end(),0.0f,[&modelrico](float result, DepthLine line){return result+pow(line.rico-modelrico,2);});
-			float MSE=SSE/alsoinliers.size();
-			if(maybeinliers.size() == alsoinliers.size()){
-				if(maybeinliers.size()>minLines)
-				{
-				ROS_INFO("all are inliers");
-				can.nmbrOfLines=alsoinliers.size();
-				can.bestMSE=MSE;
-				}
-				break;
-			}
-			if(alsoinliers.size()>minLines )
+		copy_if(maybeinliers.begin(),maybeinliers.end(),back_inserter(alsoinliers),[&mod,&line1,&line2,&TH](DepthLine & line ){
+			double x= (line1.constant-line.constant)/(line.rico-line1.rico);
+			cv::Point2d inter1(x, line1.rico*x+line1.constant);
+			x= (line2.constant-line.constant)/(line.rico-line2.rico);
+			cv::Point2d inter2(x, line2.rico*x+line2.constant);
+			double dist1 = pow(mod.x-inter1.x,2)+pow(mod.y-inter1.y,2);
+			double dist2 = pow(mod.x-inter2.x,2)+pow(mod.y-inter2.y,2);
+			return std::min(dist1,dist2)<TH;
+		});
+		std::vector<cv::Point2d> intersections;
+		intersections.reserve((std::pow(alsoinliers.size(),2)-alsoinliers.size())/2.0);
+		for(auto it = alsoinliers.begin(); it+1 != alsoinliers.end(); it++)
+		{
+			std::for_each(it+1,alsoinliers.end(),[&intersections,&it](DepthLine& line){
+				double x= (it->constant-line.constant)/(line.rico-it->rico);
+				intersections.emplace_back(x, it->rico*x+it->constant);
+			});
+		}
+		cv::Point2d sum=accumulate(intersections.begin(),intersections.end(),cv::Point2d(0.0,0.0),[](cv::Point2d& result, cv::Point2d& point){return result + point;});
+		cv::Point2d mean= cv::Point2d(sum.x/intersections.size(), sum.y/intersections.size());
+		ROS_INFO_STREAM("intersectionmod: "<< mod.x << ", " << mod.y << "mean: " << mean.x << ", " << mean.y);
+		double SSE= accumulate(intersections.begin(),intersections.end(),0.0,[&mean](double result, cv::Point2d point){return result+pow(mean.x-point.x,2)+pow(mean.y-point.y,2);});
+		double MSE=SSE/intersections.size();
+		if(maybeinliers.size() == alsoinliers.size()){
+			if(maybeinliers.size()>minLines)
 			{
-				ROS_INFO_STREAM("SSE: "<< SSE << " size: "<< alsoinliers.size() << " model: " << modelrico);
-				if(alsoinliers.size()>maxinliers)
-				{
-					maxinliers=alsoinliers.size();
-					ROS_INFO_STREAM("maxinliers "<< maxinliers);
-					maxit=static_cast<int>(std::log(eps)/std::log(1.0f-static_cast<float>(maxinliers)/static_cast<float>(maybeinliers.size()))+0.5f);
-				}
-				if(MSE<can.bestMSE)
-				{
-					ROS_INFO_STREAM("update_MSE ("<< MSE << ") ,maxit "<< maxit);
-					can.bestMSE=MSE;
-					can.nmbrOfLines+=alsoinliers.size();
-					can.lines=alsoinliers;
-				}
+			ROS_INFO("all are inliers");
+			can.nmbrOfLines=alsoinliers.size();
+			can.bestMSE=MSE;
+			can.VP=mean;
 			}
-		iter++
-		}*/
+			break;
+		}
+		if(alsoinliers.size()>minLines )
+		{
+			ROS_INFO_STREAM("SSE: "<< SSE << " size: "<< alsoinliers.size() << " model: " << mean.x << ", " << mean.y);
+			if(alsoinliers.size()>maxinliers)
+			{
+				maxinliers=alsoinliers.size();
+				ROS_INFO_STREAM("maxinliers "<< maxinliers);
+				maxit=static_cast<int>(std::log(eps)/std::log(1.0f-static_cast<float>(maxinliers)/static_cast<float>(maybeinliers.size()))+0.5f);
+			}
+			if(MSE<can.bestMSE)
+			{
+				ROS_INFO_STREAM("update_MSE ("<< MSE << ") ,maxit "<< maxit);
+				can.bestMSE=MSE;
+				can.nmbrOfLines+=alsoinliers.size();
+				can.lines=alsoinliers;
+				can.VP=mean;
+			}
+		}
+
+	}
+ROS_INFO("after while");
 
 }
 void LineReg::get3DLines(Candidate& can,const cv::Mat& depthImg,const cv::Mat& curv_weight, const cv::Mat& meanCurvature, float & fxi, float & fyi, float & cxi, float & cyi)
