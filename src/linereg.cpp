@@ -138,7 +138,7 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 		target.header.frame_id="tum_base_frontcam";
 		for(auto can:candidates)
 		{
-			if(can.planeInliers.size()<20)
+			if(can.planeInliers.size()<10)
 				continue;
 			pcl::PointCloud<pcl::PointXYZ> temp(*can.cloud,can.planeInliers);
 			pcl::PointXYZ targetpt=std::accumulate(temp.begin(), temp.end(), pcl::PointXYZ(1000.0,1000.0,1000.0), [](pcl::PointXYZ result, pcl::PointXYZ& point){
@@ -171,7 +171,7 @@ void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLi
 		if(SegmentIntersectRectangle(can.rectangle, lineit->line))
 			can.lines.push_back(*lineit);
 	}
-/// calculate rico of each line
+/// calculate parameters of each line
 	for_each(can.lines.begin(),can.lines.end(),[](DepthLine & line){
 		line.rico=(line.line[3]-line.line[1])/(line.line[2]-line.line[0]);
 		line.constant=line.line[1]-line.rico*line.line[0];
@@ -188,7 +188,6 @@ void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLi
 	std::vector<DepthLine> alsoinliers;
 	alsoinliers.reserve(maybeinliers.size());
 	unsigned int maxinliers(0);
-ROS_INFO("before while");
 	while(iter<maxit)
 	{
 		iter++;
@@ -257,7 +256,6 @@ ROS_INFO("before while");
 		}
 
 	}
-ROS_INFO("after while");
 
 }
 void LineReg::get3DLines(Candidate& can,const cv::Mat& depthImg,const cv::Mat& curv_weight, const cv::Mat& meanCurvature, float & fxi, float & fyi, float & cxi, float & cyi)

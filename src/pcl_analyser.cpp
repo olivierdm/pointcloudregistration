@@ -149,7 +149,7 @@ void PCL_analyser::getDepthImage(std::vector<framedist>& mykeyframes, const floa
 	{
 		pcl::transformPointCloud(*mykeyframes[i].frame->getPCL(),*depth,mykeyframes[i].soph);
 		*cloud+=*depth;
-		ROS_INFO_STREAM("cloud: "<< mykeyframes[i].frame->id);
+		ROS_DEBUG_STREAM("cloud: "<< mykeyframes[i].frame->id);
 	}
 /// Project the accumulated cloud to a 2D image.
 	for(auto it = cloud->begin(); it != cloud->end(); it++){ 
