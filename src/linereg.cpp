@@ -1,5 +1,6 @@
 #include "pointcloudregistration/linereg.h"
 #include "pointcloudregistration/settings.h"
+#include "tf_conversions/tf_eigen.h"
 #include <pcl/filters/extract_indices.h>
 #include <sensor_msgs/image_encodings.h>
 #include <Eigen/Geometry>
@@ -59,7 +60,7 @@ LineReg::~LineReg()
 {
 //dtor
 }
-bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vector<cv::Rect> rectangles, std::vector<cv::Vec4f>  lines, cv_bridge::CvImagePtr cv_input_ptr, const lsd_slam_viewer::keyframeMsgConstPtr frameMsg, const tum_ardrone::filter_stateConstPtr poseMsg, pcl::PointCloud<pcl::PointXYZ>::Ptr& planeCloud, Eigen::Affine3f& pose)
+bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vector<cv::Rect> rectangles, std::vector<cv::Vec4f>  lines, cv_bridge::CvImagePtr cv_input_ptr, const lsd_slam_viewer::keyframeMsgConstPtr frameMsg,/* const tum_ardrone::filter_stateConstPtr poseMsg,*/ pcl::PointCloud<pcl::PointXYZ>::Ptr& planeCloud, Eigen::Affine3f& pose)
 {
 ///
 /// \brief  Accepts the data and fusions it to expell candidates
@@ -70,7 +71,7 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 /// @param[in] lines set of lines that are detected on the visual image
 /// @param[in] cv_input_ptr the colored input image
 /// @param[in] frameMsg lsdslame liveframe
-/// @param[in] poseMsg state information coming from TUM_ardrone
+// @param[in] poseMsg state information coming from TUM_ardrone
 /// \return True if there are candidates detected, false if not
 
 	std::vector<Candidate> candidates;
@@ -93,6 +94,7 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 
 	if(pub_can.getNumSubscribers() != 0)
 		canImg=cv_input_ptr->image.clone();
+/*
 /// construct transformation matrix
 	Eigen::Matrix4f trans =Eigen::Matrix4f::Identity();
 	Eigen::AngleAxisd rollAngle(poseMsg->roll*CV_PI/180.0, Eigen::Vector3d::UnitZ());
@@ -103,7 +105,18 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 	trans.block<3,3>(0,0) = q.matrix().cast<float>();
 	trans(0,3)=poseMsg->x/100.0;
 	trans(1,3)=poseMsg->y/100.0;
-	trans(2,3)=poseMsg->z/100.0;
+	trans(2,3)=poseMsg->z/100.0;*/
+	tf::StampedTransform transform;
+	try{
+		listener.lookupTransform("/map", "/tum_base_frontcam", ros::Time(0), transform);
+	}
+	catch (tf::TransformException ex){
+		ROS_ERROR("%s",ex.what());
+		ros::Duration(1.0).sleep();
+	}
+	Eigen::Affine3d transformeig;
+	tf::transformTFToEigen(transform,transformeig);
+	Eigen::Matrix4f trans =transformeig.matrix().cast<float>();
 	Sophus::Sim3f camToWorld;
 	memcpy(camToWorld.data(), frameMsg->camToWorld.data(), 7*sizeof(float));
 	pose = camToWorld.matrix();

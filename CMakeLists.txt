@@ -14,6 +14,7 @@ cmake_modules
 pcl_ros
 image_transport
 message_filters
+tf_conversions
 cv_bridge)
 ## find_package(OpenGL REQUIRED)
 ## find_package(QGLViewer REQUIRED)
