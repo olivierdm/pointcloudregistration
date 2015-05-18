@@ -26,5 +26,11 @@ float maxStairAngle=1.3f;
 float scaledDepthVarTH = 0.01;
 /// the number of neighbours a point needs to be valid
 int minNearSupport = 5;
+/// distance threshold ransac vanishing points
+double TH=160000.0;
+/// tolerance used to calc maximum number of iterations
+float eps=0.0001f;
 /// cut-off after this
 double lastFrameTime = 1e15;
+/// analyse performance
+bool perfmon=true;

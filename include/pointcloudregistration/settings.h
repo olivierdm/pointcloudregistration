@@ -11,7 +11,9 @@ extern unsigned int minLines;
 extern float minStairAngle;
 extern float maxStairAngle;
 extern int gauss_size;
-
+extern double TH;
+extern float eps;
 extern float scaledDepthVarTH;
 extern int minNearSupport;
 extern double lastFrameTime;
+extern bool perfmon;

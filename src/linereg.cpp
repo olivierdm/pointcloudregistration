@@ -177,33 +177,38 @@ void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLi
 		line.constant=line.line[1]-line.rico*line.line[0];
 	});
 
-	auto maybeinliers=can.lines;
-	ROS_INFO_STREAM("size: "<< maybeinliers.size());
-	if(maybeinliers.size()<minLines)
+	auto set=can.lines;
+	ROS_INFO_STREAM("number of lines that intersect: "<< set.size());
+	if(set.size()<minLines)
 		return;
-	random_shuffle(maybeinliers.begin(),maybeinliers.end());
-	double TH=200.0f;
-	float eps=0.001f;
-	int iter(0),maxit(maybeinliers.size());
+	random_shuffle(set.begin(), set.end());
+
+	int iter(0),maxit(set.size());
 	std::vector<DepthLine> alsoinliers;
-	alsoinliers.reserve(maybeinliers.size());
+	alsoinliers.reserve(set.size());
 	unsigned int maxinliers(0);
 	while(iter<maxit)
 	{
 		iter++;
 		alsoinliers.clear();
-		DepthLine line1=maybeinliers[0];
-		DepthLine line2=maybeinliers[1];
-		std::rotate(maybeinliers.begin(),maybeinliers.begin()+1,maybeinliers.end());	
-		if(line1.rico==line2.rico){
+		/// get maybeinliers from set
+		DepthLine line1=set[0];
+		DepthLine line2=set[1];
+		/// shift set every iteration
+		std::rotate(set.begin(), set.begin()+1, set.end());	
+		if(std::abs(line1.rico-line2.rico)<0.00001){
 			ROS_INFO("lines are exactly parallel");
 			continue;
 		}
 		cv::Point2d mod;
+		/// get model of maybeinliers
 		mod.x= (line1.constant-line2.constant)/(line2.rico-line1.rico);
 		mod.y= mod.x*line1.rico+line1.constant;
-
-		copy_if(maybeinliers.begin(),maybeinliers.end(),back_inserter(alsoinliers),[&mod,&line1,&line2,&TH](DepthLine & line ){
+		/// add maybeinliers to alsoinliers
+		alsoinliers.push_back(line1);
+		alsoinliers.push_back(line2);
+		/// add elements from set to alsoinliers if intersection with one of the maybeinliers is close enough to the model
+		copy_if(set.begin()+1, set.end()-1, back_inserter(alsoinliers),[&mod,&line1,&line2,TH](DepthLine & line ){
 			double x= (line1.constant-line.constant)/(line.rico-line1.rico);
 			cv::Point2d inter1(x, line1.rico*x+line1.constant);
 			x= (line2.constant-line.constant)/(line.rico-line2.rico);
@@ -212,22 +217,32 @@ void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLi
 			double dist2 = pow(mod.x-inter2.x,2)+pow(mod.y-inter2.y,2);
 			return std::min(dist1,dist2)<TH;
 		});
+		/// check if there are enough inliers
+		if(alsoinliers.size()<minLines)
+			return;
+		/// get all intersections
 		std::vector<cv::Point2d> intersections;
 		intersections.reserve((std::pow(alsoinliers.size(),2)-alsoinliers.size())/2.0);
 		for(auto it = alsoinliers.begin(); it+1 != alsoinliers.end(); it++)
 		{
 			std::for_each(it+1,alsoinliers.end(),[&intersections,&it](DepthLine& line){
+				if(std::abs(it->rico-line.rico)<0.00001){
+					ROS_INFO("lines are exactly parallel");
+					return;
+				}
 				double x= (it->constant-line.constant)/(line.rico-it->rico);
 				intersections.emplace_back(x, it->rico*x+it->constant);
 			});
 		}
+		/// get the mean intersection
+		ROS_INFO_STREAM("predicted n/o intersects: "<< (std::pow(alsoinliers.size(),2)-alsoinliers.size())/2.0<< "n/o intersects: "<< intersections.size());
 		cv::Point2d sum=accumulate(intersections.begin(),intersections.end(),cv::Point2d(0.0,0.0),[](cv::Point2d& result, cv::Point2d& point){return result + point;});
 		cv::Point2d mean= cv::Point2d(sum.x/intersections.size(), sum.y/intersections.size());
-		ROS_INFO_STREAM("intersectionmod: "<< mod.x << ", " << mod.y << "mean: " << mean.x << ", " << mean.y);
+		ROS_INFO_STREAM("intersectionmod: "<< mod.x << ", " << mod.y << "mean: " << mean.x << ", " << mean.y << " intersection "<< intersections.size()<< "alsoinliers: "<< alsoinliers.size());
 		double SSE= accumulate(intersections.begin(),intersections.end(),0.0,[&mean](double result, cv::Point2d point){return result+pow(mean.x-point.x,2)+pow(mean.y-point.y,2);});
 		double MSE=SSE/intersections.size();
-		if(maybeinliers.size() == alsoinliers.size()){
-			if(maybeinliers.size()>minLines)
+		if(set.size() == alsoinliers.size()){
+			if(set.size()>minLines)
 			{
 			ROS_INFO("all are inliers");
 			can.nmbrOfLines=alsoinliers.size();
@@ -243,7 +258,7 @@ void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLi
 			{
 				maxinliers=alsoinliers.size();
 				ROS_INFO_STREAM("maxinliers "<< maxinliers);
-				maxit=static_cast<int>(std::log(eps)/std::log(1.0f-static_cast<float>(maxinliers)/static_cast<float>(maybeinliers.size()))+0.5f);
+				maxit=std::min(static_cast<int>(std::log(eps)/std::log(1.0f-static_cast<float>(maxinliers)/static_cast<float>(set.size()))+0.5f), static_cast<int>(set.size()));
 			}
 			if(MSE<can.bestMSE)
 			{
