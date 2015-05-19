@@ -14,6 +14,8 @@
 #include <cmath>        // std::abs
 #include <iterator>     // std::back_inserter
 #include <sstream>      // std::stringstream, std::stringbuf
+#include <time.h>       //filename with time
+
 
 
 struct DepthLine
@@ -41,6 +43,7 @@ struct Candidate
 	std::vector<DepthLine> lines;
 	float bestMSE;
 	float angle;
+	float sqew;
 	int nmbrOfLines;
 	float lineratio;
 	float planeratio;
@@ -48,19 +51,40 @@ struct Candidate
 	std::vector<int> planeInliers;
 	cv::Point2d VP;
 };
-LineReg::LineReg(): nh("~"),it(nh)
+LineReg::LineReg(): nh("~"),it(nh),frame_id(0),can_id(0)
 {
 	pub_det = it.advertise("lines_curv",1);
 	pub_can = it.advertise("candidates",1);
 	point_pub = nh.advertise<geometry_msgs::PointStamped>("target",3);
+	if(perfmon){
+	  time_t t = time(0);   // get time now
+	  struct tm * now = localtime( & t );
+	  std::stringstream ss;
+
+	  ss << (now->tm_year + 1900) << '-'
+	     << (now->tm_mon + 1) << '-'
+	     <<  now->tm_mday << '_'
+	     << now->tm_hour << ':'
+	     << now->tm_min << ':'
+	     << now->tm_sec;
+	//dir_path <<
+	dir =boost::filesystem::path(ss.str());
+	boost::filesystem::create_directories(dir);
+	ROS_INFO_STREAM("creating directory: " << boost::filesystem::canonical(dir).string());
+
+	ss<<"/results.csv";
+		perfres.open (ss.str(),std::ofstream::out );
+		perfres << "\"frame id\", \"can id\", \"MSE\", \"number of lines\", \"angle\", \"sqew\", \"TP\"" << std::endl;
+	}
 //ctor
 }
 
 LineReg::~LineReg()
 {
+		perfres.close();
 //dtor
 }
-bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vector<cv::Rect> rectangles, std::vector<cv::Vec4f>  lines, cv_bridge::CvImagePtr cv_input_ptr, const lsd_slam_viewer::keyframeMsgConstPtr frameMsg,/* const tum_ardrone::filter_stateConstPtr poseMsg,*/ pcl::PointCloud<pcl::PointXYZ>::Ptr& planeCloud, Eigen::Affine3f& pose)
+bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vector<cv::Rect> rectangles, std::vector<cv::Vec4f>  lines, cv_bridge::CvImagePtr cv_input_ptr, const lsd_slam_viewer::keyframeMsgConstPtr frameMsg, pcl::PointCloud<pcl::PointXYZ>::Ptr& planeCloud, Eigen::Affine3f& pose)
 {
 ///
 /// \brief  Accepts the data and fusions it to expell candidates
@@ -71,9 +95,8 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 /// @param[in] lines set of lines that are detected on the visual image
 /// @param[in] cv_input_ptr the colored input image
 /// @param[in] frameMsg lsdslame liveframe
-// @param[in] poseMsg state information coming from TUM_ardrone
 /// \return True if there are candidates detected, false if not
-
+	frame_id++;
 	std::vector<Candidate> candidates;
 	std::vector<DepthLine> depthLines;
 	candidates.reserve(rectangles.size());
@@ -94,25 +117,16 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 
 	if(pub_can.getNumSubscribers() != 0)
 		canImg=cv_input_ptr->image.clone();
-/*
-/// construct transformation matrix
-	Eigen::Matrix4f trans =Eigen::Matrix4f::Identity();
-	Eigen::AngleAxisd rollAngle(poseMsg->roll*CV_PI/180.0, Eigen::Vector3d::UnitZ());
-	Eigen::AngleAxisd yawAngle(-poseMsg->yaw*CV_PI/180.0+CV_PI, Eigen::Vector3d::UnitY());
-	Eigen::AngleAxisd pitchAngle(poseMsg->pitch*CV_PI/180.0, Eigen::Vector3d::UnitX());
 
-	Eigen::Quaternion<double> q = rollAngle * yawAngle * pitchAngle;
-	trans.block<3,3>(0,0) = q.matrix().cast<float>();
-	trans(0,3)=poseMsg->x/100.0;
-	trans(1,3)=poseMsg->y/100.0;
-	trans(2,3)=poseMsg->z/100.0;*/
+/// construct transformation matrix
 	tf::StampedTransform transform;
 	try{
-		listener.lookupTransform("/map", "/tum_base_frontcam", ros::Time(0), transform);
+		listener.lookupTransform("/map", "/tum_base_frontcam", cv_input_ptr->header.stamp, transform);
 	}
 	catch (tf::TransformException ex){
 		ROS_ERROR("%s",ex.what());
 		ros::Duration(1.0).sleep();
+		return false;
 	}
 	Eigen::Affine3d transformeig;
 	tf::transformTFToEigen(transform,transformeig);
@@ -140,20 +154,18 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 		pub_can.publish(cv_can.toImageMsg());
 	}
 	candidates.erase(remove_if(candidates.begin(),candidates.end(),[](Candidate& can){return can.nmbrOfLines==0;}),candidates.end());
-	for(auto can:candidates)
-	{
-		pcl::PointCloud<pcl::PointXYZ> temp(*can.cloud,can.planeInliers);
-		*planeCloud+=temp;
-	}
+
 	if(candidates.size()>0){
 		geometry_msgs::PointStamped target;
 		target.header.stamp=ros::Time::now();
 		target.header.frame_id="tum_base_frontcam";
+		cv::Mat perf=cv_input_ptr->image.clone();
 		for(auto can:candidates)
 		{
 			if(can.planeInliers.size()<10)
 				continue;
 			pcl::PointCloud<pcl::PointXYZ> temp(*can.cloud,can.planeInliers);
+			*planeCloud+=temp;
 			pcl::PointXYZ targetpt=std::accumulate(temp.begin(), temp.end(), pcl::PointXYZ(1000.0,1000.0,1000.0), [](pcl::PointXYZ result, pcl::PointXYZ& point){
 				if(point.y< result.y){
 					result.x=point.x;
@@ -168,6 +180,22 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 			target.point.y=targetpt.y;
 			target.point.z=targetpt.z;
 			point_pub.publish(target);
+			if(perfmon){
+				can_id++;
+				perfres<<frame_id<<", "<< can_id << ", " << can.bestMSE << ", " << can.nmbrOfLines << ", " << can.angle << ", " << can.sqew << ", " << 1 << std::endl;
+				std::stringstream fname;
+				fname << boost::filesystem::canonical(dir).string() <<"/"<< frame_id<< ".png";
+				std::stringstream canstr;
+				canstr<<can_id;
+				cv::Point origin(can.rectangle.x,can.rectangle.y);
+				cv::putText(perf, canstr.str(), origin, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0,0,255));
+				cv::Point2d targetproj;
+				targetproj.x=(frameMsg->fx*targetpt.x/targetpt.z+frameMsg->cx);
+		                targetproj.y=(frameMsg->fy*targetpt.y/targetpt.z+frameMsg->cy);
+				cv::rectangle(perf, can.rectangle, cv::Scalar(0,255,0));
+				cv::circle(perf, targetproj, 2, cv::Scalar(0,255,0));
+				cv::imwrite(fname.str(),perf);
+			}
 		}
 		return true;
 	}
@@ -221,7 +249,7 @@ void LineReg::getParallelLines(Candidate & can, std::vector<DepthLine> & depthLi
 		alsoinliers.push_back(line1);
 		alsoinliers.push_back(line2);
 		/// add elements from set to alsoinliers if intersection with one of the maybeinliers is close enough to the model
-		copy_if(set.begin()+1, set.end()-1, back_inserter(alsoinliers),[&mod,&line1,&line2,TH](DepthLine & line ){
+		copy_if(set.begin()+1, set.end()-1, back_inserter(alsoinliers),[&mod,&line1,&line2](DepthLine & line ){
 			double x= (line1.constant-line.constant)/(line.rico-line1.rico);
 			cv::Point2d inter1(x, line1.rico*x+line1.constant);
 			x= (line2.constant-line.constant)/(line.rico-line2.rico);
@@ -362,6 +390,9 @@ void LineReg::getPlane(Candidate& can, cv::Mat& linesImg, cv::Mat& canImg, const
 		can.nmbrOfLines=0;
 		return;
 	}
+	coefficients(3)=1;
+	Eigen::VectorXf coefcam= trans.inverse()*coefficients;
+	can.sqew=coefcam(1);
 	if(!canImg.empty())
 	{
 		cv::rectangle(canImg, can.rectangle, cv::Scalar(0,255,0));
@@ -370,7 +401,7 @@ void LineReg::getPlane(Candidate& can, cv::Mat& linesImg, cv::Mat& canImg, const
 			 << "nmbr of lines: " << can.nmbrOfLines << "\n"
 			<< "ratio: " << static_cast<float>(can.planeInliers.size())/static_cast<float>(can.lineInliers.size()) << "\n"
 			<< "MSE: "<< can.bestMSE << "\n"
-			<< "sqew: "<< coefficients(1) << "\n";
+			<< "sqew: "<< can.sqew << "\n";
 		int baseline=0;
 		cv::Point origin(can.rectangle.x,can.rectangle.y);
 		std::string s = data.str();

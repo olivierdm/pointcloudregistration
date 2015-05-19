@@ -19,12 +19,11 @@ Vision::~Vision()
 	std::cout<<"visor destroyed"<< std::endl;
 	//dtor
 }
-void Vision::operator()(const cv_bridge::CvImagePtr& cv_input_ptr/*, const tum_ardrone::filter_stateConstPtr& poseMsg*/, std::vector<cv::Rect>& rectangles, std::vector<cv::Vec4f>& lines)
+void Vision::operator()(const cv_bridge::CvImagePtr& cv_input_ptr, std::vector<cv::Rect>& rectangles, std::vector<cv::Vec4f>& lines)
 {
 ///
 /// \brief  Accepts the data of an image and copies the neccesary data to the adequate private variables.
 /// @param[in] cv_input_ptr cv_bridge image coming from the front camera
-/// @param[in] poseMsg estimated pose and the state of the drone coming from the EKF
 /// @param[out] rectangles the zones detected by the object detector
 /// @param[out] lines vector containing the lines
 /// 
@@ -34,18 +33,17 @@ void Vision::operator()(const cv_bridge::CvImagePtr& cv_input_ptr/*, const tum_a
 /// Convert input to grayscale
 	cv::cvtColor(cv_input_ptr->image, inputGray, cv::COLOR_BGR2GRAY);
 /// Detect lines
-	getLines(cv_input_ptr, inputGray, /*poseMsg,*/ lines);
+	getLines(cv_input_ptr, inputGray, lines);
 /// Perform object detection
 	detect(cv_input_ptr, inputGray, rectangles);
 }
 
-void Vision::getLines(const cv_bridge::CvImagePtr& cv_input_ptr, cv::Mat& inputGray,/* const tum_ardrone::filter_stateConstPtr& pose,*/ std::vector<cv::Vec4f>& lines)
+void Vision::getLines(const cv_bridge::CvImagePtr& cv_input_ptr, cv::Mat& inputGray, std::vector<cv::Vec4f>& lines)
 {
 ///
 /// \brief Detects lines using the line segment detector implemented in OpenCV.
 /// @param[in] cv_input_ptr cv_bridge image coming from the front camera
 /// @param[in] inputGray grayscale version of the input image
-// @param[in] poseMsg estimated pose and the state of the drone coming from the EKF
 /// @param[out] lines vector containing the lines
 
 	std::vector<cv::Vec4f> bad_lines;
@@ -55,18 +53,19 @@ void Vision::getLines(const cv_bridge::CvImagePtr& cv_input_ptr, cv::Mat& inputG
 /// Get transform
 	tf::StampedTransform transform;
 	try{
-		listener.lookupTransform("/map", "/tum_base_frontcam", ros::Time(0), transform);
+		listener.lookupTransform("/map", "/tum_base_frontcam", cv_input_ptr->header.stamp, transform);
 	}
 	catch (tf::TransformException ex){
 		ROS_ERROR("%s",ex.what());
 		ros::Duration(1.0).sleep();
+		return;
 	}
 
 	///  acess roll pitch and yaw
 	double roll, pitch, yaw;
 	transform.getBasis().getRPY(roll, pitch, yaw);
-	float maxtan = std::tan(static_cast<float>(roll+maxAngle)/180.0f * CV_PI);
-	float mintan = std::tan(static_cast<float>(roll-maxAngle)/180.0f * CV_PI);
+	float maxtan = std::tan(static_cast<float>(roll-CV_PI/2.0+maxAngle/180.0 * CV_PI));
+	float mintan = std::tan(static_cast<float>(roll-CV_PI/2.0-maxAngle/180.0 * CV_PI));
 	auto iter(remove_if(lines.begin(),lines.end(),[&maxtan,&mintan](cv::Vec4f& line) {
 		float mytan=(line[3] - line[1])/(line[2]-line[0]);
 		return mytan<mintan || mytan>maxtan;}));
@@ -77,7 +76,7 @@ void Vision::getLines(const cv_bridge::CvImagePtr& cv_input_ptr, cv::Mat& inputG
 	{
 		cv_bridge::CvImage cv_lsd(cv_input_ptr->header,"bgr8",cv_input_ptr->image.clone());
 
-		float y =(cv_input_ptr->image.cols)/2.0f*tan(roll/180.0*CV_PI);
+		float y =(cv_input_ptr->image.cols)/2.0f*tan(roll-CV_PI/2.0);
 		float y1= static_cast<float> (cv_lsd.image.rows) / 2.0f + y;
 		float y2= static_cast<float> (cv_lsd.image.rows) / 2.0f - y;
 		ls->drawSegments(cv_lsd.image,bad_lines);

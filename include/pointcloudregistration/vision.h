@@ -12,7 +12,7 @@ class Vision
     public:
         Vision();
         virtual ~Vision();
-	void operator()(const cv_bridge::CvImagePtr&, /*const tum_ardrone::filter_stateConstPtr&,*/ std::vector<cv::Rect>&, std::vector<cv::Vec4f>&);
+	void operator()(const cv_bridge::CvImagePtr&, std::vector<cv::Rect>&, std::vector<cv::Vec4f>&);
     protected:
     private:
 	std::string stair_cascade_name;
@@ -23,7 +23,7 @@ class Vision
 	image_transport::Publisher pub_lsd, pub_detect;
 	cv::Ptr<cv::LineSegmentDetector> ls;
 	//use std::vector<cv::Vec4i> for older implementations
-	void getLines(const cv_bridge::CvImagePtr &, cv::Mat&,/* const tum_ardrone::filter_stateConstPtr&,*/ std::vector<cv::Vec4f>&);
+	void getLines(const cv_bridge::CvImagePtr &, cv::Mat&, std::vector<cv::Vec4f>&);
 	void detect(const cv_bridge::CvImagePtr &, cv::Mat&, std::vector<cv::Rect>&);
 };
 

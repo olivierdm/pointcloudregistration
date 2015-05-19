@@ -44,13 +44,13 @@ void graphCb(lsd_slam_viewer::keyframeGraphMsgConstPtr msg)
 /// @param[in] msg keyframe graph message
 	registrar->addGraphMsg(msg);
 }
-void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::keyframeMsgConstPtr &frameMsg/*, const tum_ardrone::filter_stateConstPtr &poseMsg*/)
+void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::keyframeMsgConstPtr &frameMsg)
 {
 ///
 /// \brief Process the incoming data and detect stairs
 /// @param[in] imgMsg ros image msg from the ardrone front camera
 /// @param[in] frameMsg lsdslam liveframe
-// @param[in] poseMsg pose information from TUM_ardrone
+
 
 /// Initialize variables that will be passed by reference.
 	cv::UMat depthImg, H, CI;
@@ -71,13 +71,13 @@ void callback(const sensor_msgs::ImageConstPtr& imgMsg ,const lsd_slam_viewer::k
 /// Get the keyframes from the graph and pass the data to the PCL_analyser. Image processing is done in parallel
 	std::vector<std::shared_ptr<KeyFrame>> keyframes = graph->getFrames();
 	tbb::parallel_invoke([&]{(*pcl_analyse)(frameMsg, keyframes, depthImg, H, CI);},
-			[&]{(*visor)(cv_input_ptr, /*poseMsg,*/ rectangles, lines);}
+			[&]{(*visor)(cv_input_ptr, rectangles, lines);}
 	);
 
 /// Combine the data and attempt detection
 	g.run([=]{pcl::PointCloud<pcl::PointXYZ>::Ptr canPlane(new pcl::PointCloud<pcl::PointXYZ>);
 		Eigen::Affine3f pose;
-		if((*stairs)(depthImg, H, CI, rectangles, lines, cv_input_ptr, frameMsg, /*poseMsg,*/ canPlane, pose))
+		if((*stairs)(depthImg, H, CI, rectangles, lines, cv_input_ptr, frameMsg, canPlane, pose))
 		registrar->drawPlane(canPlane, pose);});
 }
 
@@ -113,8 +113,7 @@ int main( int argc, char** argv )
 	image_transport::ImageTransport it(processhandler);
 	image_transport::SubscriberFilter image_sub(it, processhandler.resolveName("image"), 1);
 	message_filters::Subscriber<lsd_slam_viewer::keyframeMsg> liveFrames_sub(processhandler,processhandler.resolveName("lsd_slam/liveframes"), 1);
-	//message_filters::Subscriber<tum_ardrone::filter_state> pose_sub(processhandler,processhandler.resolveName("/ardrone/predictedPose"),1);
-	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, lsd_slam_viewer::keyframeMsg/*, tum_ardrone::filter_state*/> MySyncPolicy;
+	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, lsd_slam_viewer::keyframeMsg> MySyncPolicy;
 	//ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(1), only realtime
 	message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(1), image_sub, liveFrames_sub/*, pose_sub*/);
 	sync.registerCallback(boost::bind(&callback, _1, _2/*,_3*/));
