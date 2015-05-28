@@ -31,6 +31,7 @@ PCL_registration::~PCL_registration()
 bool PCL_registration::addFrameMsg(lsd_slam_viewer::keyframeMsgConstPtr msg)
 {
 /// \brief Add Keyframe or check if lsdslam is ok with liveframe.
+/// \return Returns true if jump detected.
 	boost::mutex::scoped_lock lock(meddleMutex);
 	bool ret(false);
 	if(!msg->isKeyframe)
@@ -66,6 +67,7 @@ void PCL_registration::visualiserThread()
 while (!wantExit)
   {
 	if(resetRequested){
+		ROS_DEBUG("viewer reset requested");
 		viewer->removeAllPointClouds();
 		eraseClouds();
 		graph->reset();

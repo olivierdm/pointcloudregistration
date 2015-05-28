@@ -28,6 +28,8 @@ float scaledDepthVarTH = 0.01;
 int minNearSupport = 5;
 /// distance threshold ransac vanishing points
 double TH=160000.0;
+/// rico threshold ransac parallel lines
+double parTH=0.1;
 /// tolerance used to calc maximum number of iterations
 float eps=0.0001f;
 /// cut-off after this

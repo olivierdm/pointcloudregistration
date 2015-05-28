@@ -33,7 +33,7 @@ class LineReg
 	tf::TransformListener listener;
 	void getParallelLines(Candidate &, std::vector<DepthLine>&);
 	void get3DLines(Candidate &, const cv::Mat&, const cv::Mat&, const cv::Mat&, float&, float&, float&, float&);
-	void getPlane(Candidate &, cv::Mat&, cv::Mat&, const Eigen::Matrix4f&);
+	void getPlane(Candidate &, cv::Mat&, cv::Mat&, const Eigen::Affine3d&);
 };
 
 #endif // LINEREG_H

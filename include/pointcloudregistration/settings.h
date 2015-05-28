@@ -12,6 +12,7 @@ extern float minStairAngle;
 extern float maxStairAngle;
 extern int gauss_size;
 extern double TH;
+extern double parTH;
 extern float eps;
 extern float scaledDepthVarTH;
 extern int minNearSupport;
