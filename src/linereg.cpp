@@ -410,9 +410,9 @@ void LineReg::getPlane(Candidate& can, cv::Mat& linesImg, cv::Mat& canImg, const
 /// @param[out] canImg output image containing the candidates with extra info
 /// @param[in] trans rigid body transform between camera and ekf
 
-	pcl::PointCloud<pcl::PointXYZ> ekfcloud;
-	pcl::transformPointCloud(*can.cloud,ekfcloud,trans);
-	pcl::SampleConsensusModelPlane<pcl::PointXYZ>::Ptr model_p (new pcl::SampleConsensusModelPlane<pcl::PointXYZ> (can.cloud, can.lineInliers));
+	pcl::PointCloud<pcl::PointXYZ>::Ptr ekfcloud;
+	pcl::transformPointCloud(*can.cloud,*ekfcloud,trans);
+	pcl::SampleConsensusModelPlane<pcl::PointXYZ>::Ptr model_p (new pcl::SampleConsensusModelPlane<pcl::PointXYZ> (ekfcloud, can.lineInliers));
 	Eigen::VectorXf coefficients;
 	pcl::RandomSampleConsensus<pcl::PointXYZ> ransac (model_p);
 	ransac.setDistanceThreshold (.02);
@@ -432,6 +432,12 @@ void LineReg::getPlane(Candidate& can, cv::Mat& linesImg, cv::Mat& canImg, const
 	Eigen::Vector3d nveccam= trans.inverse()*nvec;
 	Eigen::Vector3d nvecorcam = trans.inverse()*Eigen::Vector3d::Zero();
 	can.sqew=nveccam(1)-nvecorcam(1);
+	Eigen::Vector4f Ptmin, Ptmax;
+	pcl::getMinMax3D(*ekfcloud, can.planeInliers, Ptmin, Ptmax);
+	ROS_INFO_STREAM("boundingbox: "<< Ptmin << ", " << Ptmax);
+	coefficients(3)=1;
+	Eigen::VectorXf coefcam= trans.inverse()*coefficients;
+	can.sqew=coefcam(1);
 	if(!canImg.empty())
 	{
 		cv::rectangle(canImg, can.rectangle, cv::Scalar(0,255,0));
