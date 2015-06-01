@@ -44,6 +44,7 @@ struct Candidate
 	float bestMSE;
 	float angle;
 	float sqew;
+	float volume;
 	int nmbrOfLines;
 	float lineratio;
 	float planeratio;
@@ -74,7 +75,7 @@ LineReg::LineReg(): nh("~"),it(nh),frame_id(0),can_id(0)
 
 	ss<<"/results.csv";
 		perfres.open (ss.str(),std::ofstream::out );
-		perfres << "\"frame id\", \"can id\", \"MSE\", \"number of lines\", \"angle\", \"sqew\", \"TP\"" << std::endl;
+		perfres << "\"frame id\", \"can id\", \"MSE\", \"number of lines\", \"angle\", \"sqew\", \"volume\", \"TP\"" << std::endl;
 	}
 //ctor
 }
@@ -181,7 +182,7 @@ bool LineReg::operator()(cv::UMat  depthImg, cv::UMat  H, cv::UMat CI, std::vect
 			point_pub.publish(target);
 			if(perfmon){
 				can_id++;
-				perfres<<frame_id<<", "<< can_id << ", " << can.bestMSE << ", " << can.nmbrOfLines << ", " << can.angle << ", " << can.sqew << ", " << 1 << std::endl;
+				perfres<<frame_id<<", "<< can_id << ", " << can.bestMSE << ", " << can.nmbrOfLines << ", " << can.angle << ", " << can.sqew << ", " << can.volume << ", "<< 1 << std::endl;
 				std::stringstream fname;
 				fname << boost::filesystem::canonical(dir).string() <<"/"<< frame_id<< ".png";
 				std::stringstream canstr;
@@ -410,7 +411,7 @@ void LineReg::getPlane(Candidate& can, cv::Mat& linesImg, cv::Mat& canImg, const
 /// @param[out] canImg output image containing the candidates with extra info
 /// @param[in] trans rigid body transform between camera and ekf
 
-	pcl::PointCloud<pcl::PointXYZ>::Ptr ekfcloud;
+	pcl::PointCloud<pcl::PointXYZ>::Ptr ekfcloud(new pcl::PointCloud<pcl::PointXYZ>);
 	pcl::transformPointCloud(*can.cloud,*ekfcloud,trans);
 	pcl::SampleConsensusModelPlane<pcl::PointXYZ>::Ptr model_p (new pcl::SampleConsensusModelPlane<pcl::PointXYZ> (ekfcloud, can.lineInliers));
 	Eigen::VectorXf coefficients;
@@ -434,10 +435,8 @@ void LineReg::getPlane(Candidate& can, cv::Mat& linesImg, cv::Mat& canImg, const
 	can.sqew=nveccam(1)-nvecorcam(1);
 	Eigen::Vector4f Ptmin, Ptmax;
 	pcl::getMinMax3D(*ekfcloud, can.planeInliers, Ptmin, Ptmax);
-	ROS_INFO_STREAM("boundingbox: "<< Ptmin << ", " << Ptmax);
-	coefficients(3)=1;
-	Eigen::VectorXf coefcam= trans.inverse()*coefficients;
-	can.sqew=coefcam(1);
+	ROS_INFO_STREAM("boundingbox: ("<< Ptmin(0) <<", "<< Ptmin(1) << ", "<< Ptmin(2) << ", " << Ptmin(3) << ")" << ", (" << Ptmax(0) << ", " << Ptmax(1) << ", " << Ptmax(2) << ", " << Ptmax(3) << ")");
+	can.volume=(Ptmax(0)-Ptmin(0))*(Ptmax(1)-Ptmin(1))*(Ptmax(2)-Ptmin(2));
 	if(!canImg.empty())
 	{
 		cv::rectangle(canImg, can.rectangle, cv::Scalar(0,255,0));
@@ -446,7 +445,8 @@ void LineReg::getPlane(Candidate& can, cv::Mat& linesImg, cv::Mat& canImg, const
 			 << "nmbr of lines: " << can.nmbrOfLines << "\n"
 			<< "ratio: " << static_cast<float>(can.planeInliers.size())/static_cast<float>(can.lineInliers.size()) << "\n"
 			<< "MSE: "<< can.bestMSE << "\n"
-			<< "sqew: "<< can.sqew << "\n";
+			<< "sqew: "<< can.sqew << "\n"
+			<< "volume: "<< can.volume << "\n"; 
 		int baseline=0;
 		cv::Point origin(can.rectangle.x,can.rectangle.y);
 		std::string s = data.str();

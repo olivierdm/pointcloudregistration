@@ -35,4 +35,4 @@ float eps=0.0001f;
 /// cut-off after this
 double lastFrameTime = 1e15;
 /// analyse performance
-bool perfmon=true;
+bool perfmon=false;
