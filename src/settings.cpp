@@ -34,5 +34,9 @@ double parTH=0.1;
 float eps=0.0001f;
 /// cut-off after this
 double lastFrameTime = 1e15;
+///skew
+double skewTH=0.35;
+///volume
+double volTH=0.05;
 /// analyse performance
-bool perfmon=false;
+bool perfmon=true;

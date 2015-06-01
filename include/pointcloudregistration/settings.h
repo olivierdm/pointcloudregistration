@@ -17,4 +17,6 @@ extern float eps;
 extern float scaledDepthVarTH;
 extern int minNearSupport;
 extern double lastFrameTime;
+extern double skewTH;
+extern double volTH;
 extern bool perfmon;

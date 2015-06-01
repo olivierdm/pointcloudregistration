@@ -432,11 +432,19 @@ void LineReg::getPlane(Candidate& can, cv::Mat& linesImg, cv::Mat& canImg, const
 	nvec<<coefficients(0), coefficients(1), coefficients(2);
 	Eigen::Vector3d nveccam= trans.inverse()*nvec;
 	Eigen::Vector3d nvecorcam = trans.inverse()*Eigen::Vector3d::Zero();
-	can.sqew=nveccam(1)-nvecorcam(1);
+	can.sqew=nveccam(0)-nvecorcam(0);
+	if(std::abs(can.sqew)>skewTH){
+		can.nmbrOfLines=0;
+		return;
+	}
 	Eigen::Vector4f Ptmin, Ptmax;
 	pcl::getMinMax3D(*ekfcloud, can.planeInliers, Ptmin, Ptmax);
 	ROS_INFO_STREAM("boundingbox: ("<< Ptmin(0) <<", "<< Ptmin(1) << ", "<< Ptmin(2) << ", " << Ptmin(3) << ")" << ", (" << Ptmax(0) << ", " << Ptmax(1) << ", " << Ptmax(2) << ", " << Ptmax(3) << ")");
 	can.volume=(Ptmax(0)-Ptmin(0))*(Ptmax(1)-Ptmin(1))*(Ptmax(2)-Ptmin(2));
+	if(can.volume<volTH){
+		can.nmbrOfLines=0;
+		return;
+	}
 	if(!canImg.empty())
 	{
 		cv::rectangle(canImg, can.rectangle, cv::Scalar(0,255,0));
